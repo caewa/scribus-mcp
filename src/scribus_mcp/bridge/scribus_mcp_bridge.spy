@@ -1,0 +1,448 @@
+# -*- coding: utf-8 -*-
+## name = scribus-mcp-bridge
+## title = Scribus MCP Bridge
+## description = Listens on TCP loopback so the scribus-mcp server can drive this Scribus session.
+
+"""Scribus MCP bridge.
+
+Robust against Scribus's embedded interpreter quirks:
+  - sys.stderr / sys.stdout may be None on Windows GUI apps -> log to a file.
+  - PyQt/PySide may not be importable in a one-shot Execute-Script context;
+    if so, fall back to a polling thread (less ideal but works).
+  - Idempotent: re-running this script in the same session no-ops.
+
+stdlib only. Optional Qt timer when bindings are available.
+"""
+
+import json
+import os
+import queue as _queue
+import secrets
+import socket
+import sys
+import threading
+import time
+import traceback
+
+
+# ---------------------------------------------------------------------------
+# Step 1: import scribus (must come from inside Scribus)
+# ---------------------------------------------------------------------------
+
+try:
+    import scribus
+except ImportError:
+    # Can't even log — abort silently. This script wasn't meant to be run
+    # outside Scribus.
+    raise SystemExit(0)
+
+
+# ---------------------------------------------------------------------------
+# Step 2: safe logging — sys.stderr may be None on Windows GUI app
+# ---------------------------------------------------------------------------
+
+def _runtime_dir():
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~/AppData/Local")
+        return os.path.join(base, "scribus-mcp")
+    if sys.platform == "darwin":
+        return os.path.join(os.path.expanduser("~"), "Library", "Application Support", "scribus-mcp")
+    base = os.environ.get("XDG_RUNTIME_DIR") or os.environ.get("TMPDIR") or "/tmp"
+    return os.path.join(base, "scribus-mcp")
+
+
+_LOG_PATH = None
+
+
+def _ensure_log_path():
+    global _LOG_PATH
+    if _LOG_PATH:
+        return _LOG_PATH
+    rdir = _runtime_dir()
+    try:
+        os.makedirs(rdir, exist_ok=True)
+    except OSError:
+        pass
+    _LOG_PATH = os.path.join(rdir, "bridge.log")
+    return _LOG_PATH
+
+
+def _log(msg):
+    """Append to log file, also try stderr if it actually exists."""
+    text = "[%s] scribus_mcp_bridge: %s\n" % (time.strftime("%H:%M:%S"), msg)
+    try:
+        path = _ensure_log_path()
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(text)
+    except Exception:
+        pass
+    try:
+        if sys.stderr is not None:
+            sys.stderr.write(text)
+            sys.stderr.flush()
+    except Exception:
+        pass
+
+
+def _fatal(msg):
+    """Show a Scribus messageBox with the error and log it."""
+    _log("FATAL: " + msg)
+    try:
+        scribus.messageBox("scribus-mcp-bridge", msg, scribus.ICON_CRITICAL)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Step 3: idempotency check
+# ---------------------------------------------------------------------------
+
+# Stash state on the scribus module so it survives across .spy executions
+# in the same persistent interpreter.
+_STATE_KEY = "_mcp_bridge_state"
+_existing = getattr(scribus, _STATE_KEY, None)
+
+
+def _port_alive(port):
+    """Quick TCP-connect probe to confirm an existing bridge listener is
+    still answering. Used before bailing on the idempotency check —
+    otherwise re-running the bridge after a previous-run-crashed-but-
+    state-survived scenario keeps reporting "already running"."""
+    if not port:
+        return False
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.5)
+        try:
+            s.connect(("127.0.0.1", int(port)))
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+        return True
+    except OSError:
+        return False
+
+
+if _existing is not None:
+    _existing_port = _existing.get("port")
+    if _port_alive(_existing_port):
+        _log("already running in this session (port=%s) — skipping re-init" % _existing_port)
+        raise SystemExit(0)
+    # Discovery state survives but the listener is dead (Scribus
+    # crashed / threads died / etc). Clear it and re-init below.
+    _log("stale state on scribus.%s (port=%s no longer answering) — re-initialising"
+         % (_STATE_KEY, _existing_port))
+    try:
+        delattr(scribus, _STATE_KEY)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Step 4: probe Qt binding availability
+# ---------------------------------------------------------------------------
+
+_QTimer = None
+_qt_binding = None
+for _mod in ("PyQt6.QtCore", "PyQt5.QtCore", "PySide6.QtCore", "PySide2.QtCore"):
+    try:
+        _qt = __import__(_mod, fromlist=["QTimer"])
+        _QTimer = _qt.QTimer
+        _qt_binding = _mod.split(".")[0]
+        _log("found Qt binding: %s" % _qt_binding)
+        break
+    except ImportError:
+        continue
+
+if _QTimer is None:
+    _log("no Qt binding (PyQt5/6 or PySide2/6) — falling back to thread polling")
+
+
+# ---------------------------------------------------------------------------
+# Step 5: discovery file
+# ---------------------------------------------------------------------------
+
+def _write_discovery(port, token):
+    rdir = _runtime_dir()
+    os.makedirs(rdir, exist_ok=True)
+    path = os.path.join(rdir, "scribus-mcp.json")
+    payload = {"host": "127.0.0.1", "port": port, "token": token, "pid": os.getpid()}
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+    if not sys.platform.startswith("win"):
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+    return path
+
+
+# ---------------------------------------------------------------------------
+# Step 6: (de)serialization helpers
+# ---------------------------------------------------------------------------
+
+def _to_jsonable(v):
+    if isinstance(v, (str, int, float, bool)) or v is None:
+        return v
+    if isinstance(v, (bytes, bytearray)):
+        # Latin-1 round-trips bytes losslessly into a string, which is
+        # less surprising than ``repr(b'\\xff')`` for callers who want
+        # raw image / font bytes back. Length-bounded just in case.
+        try:
+            return v.decode("latin-1") if len(v) < 1024 * 1024 else repr(v)
+        except Exception:
+            return repr(v)
+    if isinstance(v, (list, tuple)):
+        return [_to_jsonable(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _to_jsonable(x) for k, x in v.items()}
+    if isinstance(v, set):
+        return [_to_jsonable(x) for x in v]
+    return repr(v)
+
+
+def _to_tuples(v):
+    """Scribus's C-level argument parser requires tuples for geometry args.
+    JSON sends them as lists, so convert."""
+    if isinstance(v, list):
+        return tuple(_to_tuples(x) for x in v)
+    if isinstance(v, dict):
+        return {k: _to_tuples(x) for k, x in v.items()}
+    return v
+
+
+# ---------------------------------------------------------------------------
+# Step 7: listener (network I/O thread)
+# ---------------------------------------------------------------------------
+
+_inbox = _queue.Queue()
+_token = None
+
+
+def _listener(server_sock):
+    while True:
+        try:
+            conn, _ = server_sock.accept()
+        except OSError:
+            return
+        try:
+            conn.settimeout(5.0)
+            data = b""
+            while not data.endswith(b"\n"):
+                chunk = conn.recv(65536)
+                if not chunk:
+                    break
+                data += chunk
+                if len(data) > 16 * 1024 * 1024:
+                    break
+            try:
+                msg = json.loads(data.decode("utf-8"))
+            except Exception as exc:
+                _send_back(conn, {"ok": False, "error": "bad json: %s" % exc})
+                continue
+            if msg.get("token") != _token:
+                _send_back(conn, {"ok": False, "error": "auth failed"})
+                continue
+            _inbox.put((conn, msg))
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _send_back(conn, payload):
+    try:
+        conn.sendall((json.dumps(payload, default=str) + "\n").encode("utf-8"))
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+_KEEP_LIST_ARGS = {
+    # Scribus's C parser strictly requires Python list (not tuple) for
+    # the points list of these shape constructors. JSON has no
+    # tuple/list distinction so the bridge has to special-case them.
+    #
+    # If you add a new shape primitive that takes a flat coords list
+    # and Scribus complains "argument must be list, not tuple", add the
+    # method name here. The patterns layer routes anything more
+    # complex through ``script()`` (see ``radar_chart``,
+    # ``pie_chart``, etc.) which avoids this conversion entirely.
+    "createPolygon",
+    "createPolyLine",
+    "createBezierLine",
+}
+
+
+def _handle(msg):
+    kind = msg.get("kind")
+    try:
+        if kind == "call":
+            method = msg["method"]
+            raw_args = msg.get("args", []) or []
+            raw_kwargs = msg.get("kwargs", {}) or {}
+            if method in _KEEP_LIST_ARGS:
+                args = raw_args
+                kwargs = raw_kwargs
+            else:
+                args = _to_tuples(raw_args)
+                kwargs = _to_tuples(raw_kwargs)
+            fn = getattr(scribus, method)
+            value = fn(*args, **kwargs)
+            return {"ok": True, "value": _to_jsonable(value)}
+        if kind == "exec":
+            body = msg.get("body", "")
+            result_expr = msg.get("result_expr", "None")
+            ns = {"scribus": scribus}
+            exec(compile(body, "<scribus-mcp>", "exec"), ns)
+            value = eval(result_expr, ns)
+            return {"ok": True, "value": _to_jsonable(value)}
+        if kind == "ping":
+            return {"ok": True, "value": "pong"}
+        return {"ok": False, "error": "unknown kind: %s" % kind}
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+
+
+# ---------------------------------------------------------------------------
+# Step 8a: main-thread dispatcher (Qt path)
+# ---------------------------------------------------------------------------
+
+def _drain_inbox():
+    while True:
+        try:
+            conn, msg = _inbox.get_nowait()
+        except _queue.Empty:
+            return
+        try:
+            response = _handle(msg)
+        except Exception:
+            response = {
+                "ok": False,
+                "error": "dispatcher error",
+                "traceback": traceback.format_exc(),
+            }
+        _send_back(conn, response)
+
+
+# ---------------------------------------------------------------------------
+# Step 8b: thread dispatcher fallback (no Qt path)
+# ---------------------------------------------------------------------------
+
+def _thread_dispatcher():
+    """Fallback when no Qt binding is available. WARNING: this calls Scripter
+    from a non-main thread, which is not officially supported. May crash on
+    GUI-touching operations. Use Qt path or headless mode whenever possible.
+    """
+    while True:
+        conn, msg = _inbox.get()  # blocking
+        try:
+            response = _handle(msg)
+        except Exception:
+            response = {
+                "ok": False,
+                "error": "dispatcher error",
+                "traceback": traceback.format_exc(),
+            }
+        _send_back(conn, response)
+
+
+# ---------------------------------------------------------------------------
+# Step 9: start
+# ---------------------------------------------------------------------------
+
+def _start():
+    global _token
+    try:
+        _token = secrets.token_hex(16)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(8)
+        port = sock.getsockname()[1]
+        discovery_path = _write_discovery(port, _token)
+
+        listener_thread = threading.Thread(
+            target=_listener, args=(sock,), daemon=True, name="scribus-mcp-listener"
+        )
+        listener_thread.start()
+
+        timer = None
+        if _QTimer is not None:
+            timer = _QTimer()
+            timer.timeout.connect(_drain_inbox)
+            timer.start(20)
+        # No-Qt path: main-thread dispatch happens in _block_main_thread_dispatch()
+        # below, after _start() returns. We don't use a worker thread for
+        # Scripter calls because Scripter is not thread-safe.
+
+        setattr(scribus, _STATE_KEY, {
+            "port": port,
+            "token": _token,
+            "qt_binding": _qt_binding,
+            "sock": sock,
+            "listener": listener_thread,
+            "timer": timer,
+            "discovery_path": discovery_path,
+        })
+
+        _log(
+            "listening on 127.0.0.1:%d qt=%s discovery=%s"
+            % (port, _qt_binding or "NONE-thread-fallback", discovery_path)
+        )
+    except Exception as exc:
+        _fatal("startup failed: %s\n%s" % (exc, traceback.format_exc()))
+        raise
+
+
+# When Scribus runs this .spy via -py or Execute Script, the script's threads
+# do not survive the script returning — Scribus tears down the interpreter
+# context. Without a Qt main-thread dispatcher we must keep the script alive
+# AND dispatch Scripter calls from the main thread (Scripter is not
+# thread-safe — calling newDocument from a worker thread crashes Scribus).
+#
+# Solution: turn the blocking main loop into the dispatcher itself. Listener
+# thread does I/O and queues; main thread drains the queue and runs Scripter.
+#
+# Use case: `scribus -g -py bridge.spy` (headless persistent service). In GUI
+# mode the loop also freezes the Qt event loop — that's a known limitation
+# of the no-Qt-bindings path on this platform.
+
+
+def _block_main_thread_dispatch():
+    _log("entering main-thread dispatch loop (no Qt available)")
+    state = getattr(scribus, _STATE_KEY, {})
+    state["alive"] = True
+    setattr(scribus, _STATE_KEY, state)
+    while state.get("alive", True):
+        try:
+            conn, msg = _inbox.get(timeout=0.5)
+        except _queue.Empty:
+            state = getattr(scribus, _STATE_KEY, state)
+            continue
+        try:
+            response = _handle(msg)
+        except Exception:
+            response = {
+                "ok": False,
+                "error": "dispatcher error",
+                "traceback": traceback.format_exc(),
+            }
+        _send_back(conn, response)
+        state = getattr(scribus, _STATE_KEY, state)
+    _log("dispatch loop exited")
+
+
+_start()
+
+if _QTimer is None:
+    _block_main_thread_dispatch()

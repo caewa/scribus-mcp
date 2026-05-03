@@ -1,0 +1,80 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Scribus
+scribus-master/
+
+# Distribution / packaging
+build/
+dist/
+dist-test/
+*.egg
+*.egg-info/
+*.whl
+*.tar.gz
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.cache/
+
+# Environment & secrets
+.env
+.env.local
+*.local
+
+# IDE / editor
+# Ignore everything under .vscode/ except the shared recommended-extensions list.
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Scribus working files
+*.sla.bak
+*.sla.tmp
+*.sla.lck
+*_autosave_*.sla
+
+# Project-specific runtime artifacts
+jobs/
+scribus-mcp.log
+database-brief*
+*.scribus-mcp.bak
+# Scribus auto-save / emergency snapshots
+*_emergency_*.sla
+*.sla.bak
+
+# Ad-hoc demo experiments (demo-foo.sla, demo-bar.pdf) — ignored by
+# default. Specific tracked demo outputs are re-allowed via negation.
+demo-*.sla
+demo-*.pdf
+!demo-showcase.sla
+!demo-showcase.pdf
+
+# Rendered page previews — regenerated locally by demo scripts and
+# `render_page_to_image`. Kept out of the repo to avoid binary churn.
+*.png
