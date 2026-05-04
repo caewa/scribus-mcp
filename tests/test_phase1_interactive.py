@@ -884,7 +884,14 @@ def test_1U14_create_qr_code_block(call):
         )
     )
     if not r.get("ok"):
-        # Ghostscript not installed → skip rather than fail
+        # Skip on:
+        #   - Scribus < 1.7 (``required_version`` set by the version gate)
+        #   - Ghostscript not installed (Scribus reports it via createBarcode)
+        if r.get("required_version"):
+            pytest.skip(
+                f"Barcode requires Scribus {r.get('required_version')}+; "
+                f"this Scribus reports {r.get('actual_version')}"
+            )
         err = (r.get("error") or "").lower()
         if "ghostscript" in err or "gs " in err or "createbarcode" in err:
             pytest.skip(f"Barcode unavailable (likely no Ghostscript): {r.get('error')}")

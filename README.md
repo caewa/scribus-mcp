@@ -11,14 +11,14 @@ Two backends behind one tool surface:
 
 ## Status
 
-Validated end-to-end on Windows 11 + Scribus 1.7.3 + PyQt6 6.10.2:
+Validated end-to-end on:
 
-| Phase | Tests | Result |
-|---|---|---|
-| 1 — Interactive bridge (visible Scribus + bridge driving live) | 125 | **125/125 PASS** |
-| 2 — Headless backend (one-shot `scribus -g -py …` per call) | 8 | **8/8 PASS** |
+| Platform | Scribus | Qt binding | Phase 1 (interactive) | Phase 2 (headless) |
+|---|---|---|---|---|
+| Windows 11 | 1.7.3 | PyQt6 6.10.2 | **125/125 PASS** | **8/8 PASS** |
+| Debian 13 | 1.6.3 | PySide2 | **132/134 PASS, 2 skip** | **11/11 PASS** |
 
-Re-run anytime with `pytest tests/` and `SCRIBUS_MCP_LIVE=1`. See:
+The Linux skips are gated features that need Scribus 1.7+ — see [Scribus version requirements per feature](#scribus-version-requirements-per-feature). Re-run anytime with `pytest tests/` and `SCRIBUS_MCP_LIVE=1`. See:
 
 - [doc/BEST_PRACTICES.md](doc/BEST_PRACTICES.md) — house style for driving the MCP (also exposed as the `best_practices` prompt so an LLM session can pull it directly).
 - [doc/COOKBOOK.md](doc/COOKBOOK.md) — end-to-end recipes for one-pagers, manuals, dashboards, comparison reports, code walkthroughs, PDF forms.
@@ -45,9 +45,30 @@ Re-run anytime with `pytest tests/` and `SCRIBUS_MCP_LIVE=1`. See:
 ## Requirements
 
 - **Python 3.11+** for the MCP server.
-- **Scribus 1.7.x** (1.6.x mostly works but isn't the priority). On Linux Scribus links against system Python — see the distro caveat below.
+- **Scribus 1.7.x** for the full tool surface. **Scribus 1.6.x** is supported with a small handful of features gated off — see [Scribus version requirements per feature](#scribus-version-requirements-per-feature) below. On Linux Scribus links against system Python — see the distro caveat below.
 - For the **interactive** backend: a running Scribus window with the bridge `.spy` file loaded.
 - For **headless on Linux servers without a display**: `xvfb` (virtual framebuffer).
+
+### Scribus version requirements per feature
+
+The MCP works on both Scribus 1.6 and 1.7. A small number of tools wrap Scripter functions that were added in 1.7+, so calling them on a 1.6 host returns a structured error to the MCP client instead of letting Scribus's `AttributeError` leak through:
+
+```json
+{
+  "ok": false,
+  "error": "create_qr_code_block (scribus.createBarcode) requires Scribus 1.7.0+ (this Scribus reports 1.6.3). Install / point SCRIBUS_BIN at a 1.7.x build — see README 'Scribus version requirements per feature'.",
+  "required_version": "1.7.0",
+  "actual_version": "1.6.3"
+}
+```
+
+The version probe runs once per backend instance (cached via `scribus.scribus_version_info`), so the floor check costs effectively nothing on subsequent calls. An LLM client driving the MCP can match on `required_version` to surface a clean "upgrade Scribus" suggestion to the user.
+
+| Tool | Scripter call | Min Scribus | Notes |
+|---|---|---|---|
+| `create_qr_code_block` | `scribus.createBarcode` | **1.7.0** | Also needs Ghostscript on the host. |
+
+Everything else in the tool surface (~140 functions) works on both 1.6 and 1.7. If you hit a Scripter `AttributeError` from a tool not in this table, it's likely a missing gate — please file an issue.
 
 ### Linux: Python version caveat
 

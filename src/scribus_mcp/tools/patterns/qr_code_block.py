@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import (
+    Mode,
+    ServerCtx,
+    get_backend,
+    require_min_scribus_version,
+)
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -25,12 +30,23 @@ def register(mcp, ctx: ServerCtx) -> None:
         ``encoder`` is a BWIPP encoder name — common values: ``qrcode``,
         ``ean13``, ``code128``, ``datamatrix``, ``code39``.
 
-        Requires Ghostscript on the host (Scribus's barcode plugin shells out
-        to it). Returns ``ok=False`` with the underlying error if Ghostscript
-        is missing.
+        Requires Scribus 1.7.0+ (``scribus.createBarcode`` was added there)
+        and Ghostscript on the host (Scribus's barcode plugin shells out
+        to it). Returns ``ok=False`` with a ``required_version`` /
+        ``actual_version`` payload if Scribus is too old, or with the
+        underlying error if Ghostscript is missing.
 
         Single-script-body design (one round-trip vs the previous five).
         """
+        backend = await get_backend(ctx, mode)
+        gate = await require_min_scribus_version(
+            backend,
+            feature="create_qr_code_block (scribus.createBarcode)",
+            required=(1, 7, 0),
+        )
+        if gate is not None:
+            return gate
+
         cap_h = max(4.0, caption_font_size_pt * 0.5 + 1.5)
         body = f"""
 import scribus as _s
@@ -49,7 +65,6 @@ if {caption!r}:
 _value = {{"barcode": _barcode, "caption": _caption}}
 """
 
-        backend = await get_backend(ctx, mode)
         res = await backend.script(body, result_expr="_value")
         if not res.ok:
             return {"ok": False, "error": res.error or "createBarcode failed"}
