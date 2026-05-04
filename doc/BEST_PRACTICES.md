@@ -143,6 +143,32 @@ the link jumps to) and `frame_x_mm` / `frame_y_mm` / `frame_width_mm` /
 `frame_height_mm` (where the clickable rectangle sits on the *current*
 page).
 
+## Two frames for left+right page chrome — never pad with spaces
+
+Tempting anti-pattern: stuff a page footer into one text frame as `"Project · License · URL"` + many spaces + `"page 3 / 5"`, hoping the spaces push the right side to the right edge. Don't. In a proportional font, the space width varies per page, the right side never lines up cleanly, and any change in the left text re-flows the gap. The `.sla` ends up with strings like `"…rtos                                            page 5 / 5"` and the rendered page looks ragged.
+
+Use two separate frames instead:
+
+```python
+# Footer band: left side and right side as independent frames,
+# both aligned to their own edge.
+await t("create_text_frame", x_mm=15, y_mm=285, width_mm=120, height_mm=5)
+await t("set_text", name=left_name, text="Project · License · URL")
+await t("set_text_alignment", name=left_name, alignment="left")
+
+await t("create_text_frame", x_mm=145, y_mm=285, width_mm=50, height_mm=5)
+await t("set_text", name=right_name, text=f"page {p} / {n_pages}")
+await t("set_text_alignment", name=right_name, alignment="right")
+```
+
+`create_hero_band` already handles left+right via its `right_text` parameter — use it for headers. Reach for two-frame composition for footers.
+
+## Cards with short body text — `auto_height=True`
+
+`create_card_grid` and `create_callout_box` accept a fixed `height_mm`. If the body text doesn't fill the card, the trailing space is visible as an empty band — looks unbalanced. Pass `auto_height=True` and the tool measures the rendered body and shrinks the card chrome (background, accent stripe, body frame) so it sits snug against the content. For `create_card_grid`, every card in the same row is then resized to that row's tallest fitted height so the row stays visually uniform.
+
+The result includes `height_mm` (callout) or `grid_height_mm` (card grid) — chain it via `PageCursor.jump_to(...)` so the next band picks up at the actual bottom rather than the originally-requested height.
+
 ## Pass plain text — never HTML-escape
 
 Scribus's `setText` takes raw strings. If you pre-encode `&` as `&amp;` (or `<` as `&lt;`, etc.) the way you would for HTML, the encoded form ends up rendered literally in the PDF — Scribus stores user content as XML in the SLA file and re-escapes on save, so a pre-encoded `&amp;` becomes `&amp;amp;` on disk and renders as the five characters `&amp;`.

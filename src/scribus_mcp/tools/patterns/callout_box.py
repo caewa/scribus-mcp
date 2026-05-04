@@ -6,6 +6,7 @@ Single-script-body design.
 from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
+from scribus_mcp.tools._fit import FIT_TEXT_FRAME_HELPER
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -28,15 +29,37 @@ def register(mcp, ctx: ServerCtx) -> None:
         body_font_size_pt: float = 9,
         padding_mm: float = 4.0,
         title_height_mm: float = 6.0,
+        auto_height: bool = False,
         mode: Mode = "auto",
     ) -> dict:
         """A bordered, lightly-shaded box with a title and a body paragraph.
-        Useful for tips, warnings, callouts, sidebars."""
+        Useful for tips, warnings, callouts, sidebars.
+
+        ``auto_height=True`` measures the rendered body text and
+        shrinks the body frame + the background rect so the box fits
+        snugly around its content. The returned ``height_mm`` field
+        carries the final box height (which can be used by
+        ``PageCursor.jump_to`` to chain).
+        """
         body_y = y_mm + padding_mm + title_height_mm + 1
         body_h = height_mm - (padding_mm * 2) - title_height_mm - 1
         text_w = width_mm - 2 * padding_mm
         title = clean_user_text(title)
         body = clean_user_text(body)
+
+        autofit_block = ""
+        if auto_height:
+            # After setText, fit the body frame to its rendered height
+            # and resize the background rect so its bottom edge sits
+            # ``padding_mm`` below the body's new bottom.
+            autofit_block = f"""
+{FIT_TEXT_FRAME_HELPER}
+
+_fit_h = _fit_text_frame(_body, {text_w}, {body_h})
+# Final box height = top padding + title strip + 1mm gap + body + bottom padding.
+_box_h = {padding_mm} + {title_height_mm} + 1 + _fit_h + {padding_mm}
+_s.sizeObject({width_mm}, _box_h, _bg)
+"""
 
         script = f"""
 import scribus as _s
@@ -58,8 +81,14 @@ _s.setText({body!r}, _body)
 _s.setFontSize({float(body_font_size_pt)}, _body)
 _s.setTextColor({body_color!r}, _body)
 _s.setTextAlignment(3, _body)  # justify
+{autofit_block}
+# Report the final box height — same as ``height_mm`` when not auto-fitting.
+try:
+    _final_h = _box_h
+except NameError:
+    _final_h = {height_mm}
 
-_value = {{"background": _bg, "title": _title, "body": _body}}
+_value = {{"background": _bg, "title": _title, "body": _body, "height_mm": _final_h}}
 """
 
         backend = await get_backend(ctx, mode)
@@ -72,5 +101,6 @@ _value = {{"background": _bg, "title": _title, "body": _body}}
             "background": out.get("background"),
             "title": out.get("title"),
             "body": out.get("body"),
+            "height_mm": out.get("height_mm"),
             "error": None,
         }

@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
+from scribus_mcp.tools._fit import FIT_TEXT_FRAME_HELPER
 from scribus_mcp.tools.layouts._geometry import compute_grid_bboxes
 
 _ALIGN = {"left": 0, "center": 1, "right": 2, "justify": 3, "forced": 4}
@@ -42,6 +43,7 @@ async def _render_card(
     body_alignment: str,
     body_line_spacing_pt: float,
     padding_mm: float,
+    auto_height: bool = False,
 ) -> dict:
     """Render a single card. Returns the names of every piece."""
     title = clean_user_text(title)
@@ -128,6 +130,35 @@ async def _render_card(
         await backend.call("setTextAlignment", _ALIGN[body_alignment], body_name)
         await backend.call("setLineSpacing", float(body_line_spacing_pt), body_name)
 
+    final_h = ch
+    if auto_height and body_name:
+        # Measure body height after layout, then resize bg + stripe so
+        # the card fits its content snugly. Title block height stays
+        # fixed; body grows or shrinks to actual rendered text.
+        title_block_h = cur_y - cy  # everything above the body
+        fit_script = f"""
+import scribus as _s
+{FIT_TEXT_FRAME_HELPER}
+
+_fit_h = _fit_text_frame({body_name!r}, {text_w}, {body_h})
+_card_h = {title_block_h} + _fit_h + {pad_bottom}
+_s.sizeObject({cw}, _card_h, {bg!r})
+"""
+        if stripe_name and accent_side in ("left", "right"):
+            fit_script += (
+                f"_s.sizeObject({accent_thickness_mm}, _card_h, {stripe_name!r})\n"
+            )
+        elif stripe_name and accent_side == "bottom":
+            # Bottom stripe needs to follow the card's new bottom edge.
+            fit_script += (
+                f"_s.moveObjectAbs({cx}, {cy} + _card_h - {accent_thickness_mm}, "
+                f"{stripe_name!r})\n"
+            )
+        fit_script += "_value = _card_h\n"
+        fit_res = await backend.script(fit_script, result_expr="_value")
+        if fit_res.ok and isinstance(fit_res.value, (int, float)):
+            final_h = float(fit_res.value)
+
     return {
         "ok": True,
         "background": bg,
@@ -136,6 +167,7 @@ async def _render_card(
         "title": title_name,
         "body": body_name,
         "accent_side": accent_side,
+        "height_mm": final_h,
         "error": None,
     }
 
@@ -169,6 +201,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         body_alignment: str = "justify",
         body_line_spacing_pt: float = 12.0,
         padding_mm: float = 6.0,
+        auto_height: bool = False,
         mode: Mode = "auto",
     ) -> dict:
         """Render a 2D grid of cards inside (x, y, width, height).
@@ -184,6 +217,13 @@ def register(mcp, ctx: ServerCtx) -> None:
         ``columns`` is the grid width; rows = ceil(len(items)/columns). Each
         cell's bbox comes from ``compute_grid_bboxes`` so the grid never
         overflows. Set ``accent_thickness_mm=0`` to omit accent stripes.
+
+        ``auto_height=True`` measures each card's body text after layout
+        and shrinks the card chrome to fit. Within a row, every card
+        adopts the row's tallest fitted height so the cards line up.
+        Subsequent rows are repacked accordingly. The result's
+        ``grid_height_mm`` field carries the total (possibly shrunk)
+        grid height — chain it via ``PageCursor.jump_to``.
 
         Returns the names of every piece for each card so callers can re-style.
         """
@@ -251,10 +291,109 @@ def register(mcp, ctx: ServerCtx) -> None:
                 body_alignment=str(body_alignment),
                 body_line_spacing_pt=float(body_line_spacing_pt),
                 padding_mm=float(padding_mm),
+                auto_height=auto_height,
             )
             if not r.get("ok"):
                 return {"ok": False, "error": f"card {i} failed: {r.get('error')}", "cards": cards}
+            # Stash original bbox so the per-row uniform pass + the
+            # row-repack can see card geometry.
+            r["_bbox"] = dict(bboxes[i])
             cards.append(r)
+
+        grid_height_mm = float(height_mm)
+        if auto_height and cards:
+            # Per-row uniformity + repack subsequent rows up to remove the
+            # gap left by shrunk cards above. We do this in two passes:
+            # 1. group by row; for each row, find max fitted height; resize
+            #    every card in that row to match.
+            # 2. accumulate row tops top-down; shift cards in row r to start
+            #    at the previous row's bottom + ``row_gap_mm``.
+            rows_of_cards: list[list[int]] = [
+                list(range(r * columns, min((r + 1) * columns, n)))
+                for r in range(rows)
+            ]
+            row_max_h: list[float] = []
+            for row_idxs in rows_of_cards:
+                hs = [
+                    float(cards[i].get("height_mm") or cards[i]["_bbox"]["height_mm"])
+                    for i in row_idxs
+                ]
+                row_max_h.append(max(hs) if hs else 0.0)
+
+            cur_top = float(y_mm)
+            resize_calls: list[str] = []
+            for row_idx, row_idxs in enumerate(rows_of_cards):
+                target_h = row_max_h[row_idx]
+                for i in row_idxs:
+                    card = cards[i]
+                    bbox = card["_bbox"]
+                    bg = card.get("background")
+                    stripe = card.get("stripe")
+                    side = card.get("accent_side", accent_side)
+                    new_x = bbox["x_mm"]
+                    new_y = cur_top
+                    cw = bbox["width_mm"]
+                    if bg:
+                        resize_calls.append(
+                            f"_s.sizeObject({cw}, {target_h}, {bg!r})"
+                        )
+                        resize_calls.append(
+                            f"_s.moveObjectAbs({new_x}, {new_y}, {bg!r})"
+                        )
+                    if stripe:
+                        if side in ("left", "right"):
+                            sx = (
+                                new_x
+                                if side == "left"
+                                else new_x + cw - accent_thickness_mm
+                            )
+                            resize_calls.append(
+                                f"_s.sizeObject({accent_thickness_mm}, {target_h}, "
+                                f"{stripe!r})"
+                            )
+                            resize_calls.append(
+                                f"_s.moveObjectAbs({sx}, {new_y}, {stripe!r})"
+                            )
+                        elif side == "top":
+                            resize_calls.append(
+                                f"_s.moveObjectAbs({new_x}, {new_y}, {stripe!r})"
+                            )
+                        elif side == "bottom":
+                            resize_calls.append(
+                                f"_s.moveObjectAbs({new_x}, "
+                                f"{new_y + target_h - accent_thickness_mm}, "
+                                f"{stripe!r})"
+                            )
+                    # Shift the (already-fitted) text frames vertically by
+                    # the same delta as the bg, so they stay aligned.
+                    # ``moveObject`` is relative; we don't need each frame's
+                    # original y, just the row-level delta.
+                    dy = new_y - bbox["y_mm"]
+                    if dy:
+                        for key in ("eyebrow", "title", "body"):
+                            nm = card.get(key)
+                            if nm:
+                                resize_calls.append(
+                                    f"_s.moveObject(0, {dy}, {nm!r})"
+                                )
+                    card["_bbox"]["y_mm"] = new_y  # update for chained reads
+                    card["height_mm"] = target_h
+                cur_top += target_h + row_gap_mm
+
+            if resize_calls:
+                pack_script = "import scribus as _s\n" + "\n".join(resize_calls)
+                pack_res = await backend.script(pack_script, result_expr="None")
+                if not pack_res.ok:
+                    return {
+                        "ok": False,
+                        "error": f"row uniformity pack failed: {pack_res.error}",
+                        "cards": cards,
+                    }
+            grid_height_mm = cur_top - row_gap_mm - float(y_mm)
+
+        # Strip internal-only ``_bbox`` field before returning.
+        for c in cards:
+            c.pop("_bbox", None)
 
         return {
             "ok": True,
@@ -262,5 +401,6 @@ def register(mcp, ctx: ServerCtx) -> None:
             "rows": rows,
             "columns": columns,
             "count": n,
+            "grid_height_mm": grid_height_mm,
             "error": None,
         }
