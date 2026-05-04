@@ -143,6 +143,21 @@ the link jumps to) and `frame_x_mm` / `frame_y_mm` / `frame_width_mm` /
 `frame_height_mm` (where the clickable rectangle sits on the *current*
 page).
 
+## Version-gated tools
+
+A small number of tools wrap Scripter calls that only exist on Scribus 1.7+. If you call one on 1.6 you get a structured `ok=false` payload like:
+
+```json
+{
+  "ok": false,
+  "error": "create_qr_code_block (...) requires Scribus 1.7.0+ (this Scribus reports 1.6.3). ...",
+  "required_version": "1.7.0",
+  "actual_version": "1.6.3"
+}
+```
+
+Surface this verbatim to the user — `required_version` and `actual_version` are stable fields you can pattern-match on. Don't retry the same tool, and don't paper over with primitives unless the user asks. Currently only `create_qr_code_block` is gated; see [doc/SUPPORT.md](SUPPORT.md) for the matrix.
+
 ## When in doubt
 
 - Read [doc/SUPPORT.md](SUPPORT.md) — every Scripter function with

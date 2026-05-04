@@ -1,8 +1,10 @@
 # Scribus Scripter API support matrix
 
-Status of every Scribus 1.7 Scripter function we have considered, broken down by category. The goal is to help you (or an agent) quickly answer:
+Status of every Scribus 1.6 / 1.7 Scripter function we have considered, broken down by category. The goal is to help you (or an agent) quickly answer:
 
 > "Can scribus-mcp do X?" — and if not, "where is the gap?"
+
+The MCP works on both Scribus 1.6 and 1.7. A small number of Scripter calls were added in 1.7 — those are flagged in the **Notes** column with `(req. Scribus 1.7+)` and gated at runtime so calling them on 1.6 returns a structured `required_version` payload to the MCP client (see the README's *Scribus version requirements per feature* section).
 
 ## Legend
 
@@ -17,7 +19,7 @@ The "MCP tool" column points to the verb name a caller should look up. Multiple 
 
 ## How to verify on your install
 
-The tables below are curated from the Scribus 1.7 Scripter sources and our own usage. Scribus may add or rename functions between point releases. If you suspect a drift, run this from inside Scribus (Script → Execute Script):
+The tables below are curated from the Scribus 1.7 Scripter sources and our own usage on both 1.6.x and 1.7.x. The MCP runtime probes `scribus.scribus_version_info` once per backend session and gates 1.7-only calls; everything not flagged with `(req. Scribus 1.7+)` works on both lines. If you suspect a drift, run this from inside Scribus (Script → Execute Script):
 
 ```python
 import scribus, json, os
@@ -86,7 +88,7 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `createPolygon` | **Yes** | Closed polygon. | `create_polygon`. Takes `list[tuple[float, float]]` of points in mm. |
 | `createBezierLine` | **Yes** | Bezier curve. | `create_bezier_line`. |
 | `createPathText` | **Yes** | Text along a path. | `create_path_text`. |
-| `createBarcode` | **Yes** | Barcode/QR code. | `create_qr_code_block` pattern. |
+| `createBarcode` | **Yes** | Barcode/QR code. **(req. Scribus 1.7+)** | `create_qr_code_block` pattern; gated at runtime — calling on 1.6 returns `ok=false` with `required_version="1.7.0"`. Also needs Ghostscript on the host. |
 | `createTable` | **No** | Native Scribus table object. | Not yet — `create_comparison_table` builds a grid of rects/text instead. |
 | `createCustomLineStyle` | **No** | Define a multi-segment line style. | Out of scope. |
 | `groupObjects` | **Yes** | Group a list of objects by name. | `group_objects` (returns the new group's name). |

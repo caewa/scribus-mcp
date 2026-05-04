@@ -108,9 +108,9 @@ async def build_dashboard(t, pc):
         "create_kpi_row",
         items=[
             {"value": "125", "label": "MCP tools",       "delta": "across 17 modules", "fill_color": "Brand Mid"},
-            {"value": "136", "label": "tests passing",   "delta": "Phase 1 + 2 green", "fill_color": "Brand Deep"},
+            {"value": "198", "label": "tests passing",   "delta": "unit + Phase 1 + 2", "fill_color": "Brand Deep"},
             {"value": "17",  "label": "tool categories", "delta": "patterns, layouts…", "fill_color": "Accent"},
-            {"value": "22",  "label": "git commits",     "delta": "still local",        "fill_color": "Brand Mid"},
+            {"value": "1.6+1.7", "label": "Scribus",     "delta": "Linux + Windows",    "fill_color": "Brand Mid"},
         ],
         **pc.band(height_mm=38),  # cursor advances 38 + default_gap
         gap_mm=3, fill_shade=12, value_color="Ink", value_font_size_pt=22,

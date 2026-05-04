@@ -18,7 +18,7 @@ Validated end-to-end on:
 | Windows 11 | 1.7.3 | PyQt6 6.10.2 | **125/125 PASS** | **8/8 PASS** |
 | Debian 13 | 1.6.3 | PySide2 | **132/134 PASS, 2 skip** | **11/11 PASS** |
 
-The Linux skips are gated features that need Scribus 1.7+ — see [Scribus version requirements per feature](#scribus-version-requirements-per-feature). Re-run anytime with `pytest tests/` and `SCRIBUS_MCP_LIVE=1`. See:
+On Linux + 1.6.3, one skip is the 1.7-gated `create_qr_code_block` (see [Scribus version requirements per feature](#scribus-version-requirements-per-feature)) and one is a first-test bridge-startup race; both go to PASS on a 1.7.x build (run `scribus-mcp --fetch-appimage` to grab one — see [Auto-fetch the Scribus AppImage](#auto-fetch-the-scribus-appimage)). Re-run anytime with `pytest tests/` and `SCRIBUS_MCP_LIVE=1`. See:
 
 - [doc/BEST_PRACTICES.md](doc/BEST_PRACTICES.md) — house style for driving the MCP (also exposed as the `best_practices` prompt so an LLM session can pull it directly).
 - [doc/COOKBOOK.md](doc/COOKBOOK.md) — end-to-end recipes for one-pagers, manuals, dashboards, comparison reports, code walkthroughs, PDF forms.
@@ -382,7 +382,7 @@ A non-exhaustive selection (run `scribus-mcp` with [MCP Inspector](https://githu
        └───────────┼──────────────────────┘
                    ▼
        ┌──────────────────────────────────┐
-       │  Scribus 1.7.x                   │
+       │  Scribus 1.6.x or 1.7.x          │
        │  (one-shot OR persistent + .spy) │
        └──────────────────────────────────┘
 ```
