@@ -4,6 +4,17 @@ from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
 
 ALIGN = {"left": 0, "center": 1, "right": 2, "justify": 3, "forced": 4}
 
+# Scribus's LineSpacingMode enum.
+LINE_SPACING_MODE = {"fixed": 0, "automatic": 1, "baseline": 2}
+
+# Scribus's FirstLineOffsetPolicy enum.
+FIRST_LINE_OFFSET = {
+    "real_glyph_height": 0,
+    "font_ascent": 1,
+    "line_spacing": 2,
+    "baseline_grid": 3,
+}
+
 
 def register(mcp, ctx: ServerCtx) -> None:
     @mcp.tool()
@@ -74,6 +85,17 @@ def register(mcp, ctx: ServerCtx) -> None:
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
+    async def get_font_size(name: str, mode: Mode = "auto") -> dict:
+        """Return ``{size_pt}`` — the frame's current point size."""
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("getFontSize", name)
+        return {
+            "ok": result.ok,
+            "size_pt": result.unwrap_or(),
+            "error": result.error,
+        }
+
+    @mcp.tool()
     async def set_text_color(name: str, color: str, mode: Mode = "auto") -> dict:
         """Set the text fill color (must be a defined color name in the document)."""
         backend = await get_backend(ctx, mode)
@@ -113,6 +135,187 @@ def register(mcp, ctx: ServerCtx) -> None:
     async def set_line_spacing(name: str, leading_pt: float, mode: Mode = "auto") -> dict:
         backend = await get_backend(ctx, mode)
         result = await backend.call("setLineSpacing", leading_pt, name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_line_spacing_mode(
+        name: str,
+        spacing_mode: str = "fixed",
+        mode: Mode = "auto",
+    ) -> dict:
+        """Set how Scribus computes line spacing for the frame.
+
+        ``spacing_mode``:
+        - ``fixed``: use the exact leading set by ``set_line_spacing``.
+        - ``automatic``: derive leading from the font metrics (typical default).
+        - ``baseline``: snap each line to the document's baseline grid.
+        """
+        if spacing_mode not in LINE_SPACING_MODE:
+            return {
+                "ok": False,
+                "error": f"spacing_mode must be one of {sorted(LINE_SPACING_MODE)}",
+            }
+        backend = await get_backend(ctx, mode)
+        result = await backend.call(
+            "setLineSpacingMode", LINE_SPACING_MODE[spacing_mode], name
+        )
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_columns(name: str, count: int, mode: Mode = "auto") -> dict:
+        """Set how many text columns the frame is split into (>= 1)."""
+        if count < 1:
+            return {"ok": False, "error": "count must be >= 1"}
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("setColumns", int(count), name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_column_gap(name: str, gap_mm: float, mode: Mode = "auto") -> dict:
+        """Set the gap (gutter) between text columns in mm.
+
+        Forces the document unit to mm before the call so ``gap_mm``
+        always means millimetres regardless of the doc's current unit.
+        """
+        if gap_mm < 0:
+            return {"ok": False, "error": "gap_mm must be >= 0"}
+        backend = await get_backend(ctx, mode)
+        body = (
+            "import scribus as _s\n"
+            "try:\n"
+            "    _s.setUnit(_s.UNIT_MILLIMETERS)\n"
+            "except Exception:\n"
+            "    pass\n"
+            f"_value = _s.setColumnGap({gap_mm}, {name!r})\n"
+        )
+        result = await backend.script(body, result_expr="_value")
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_underline(
+        name: str,
+        offset_hpt: int = -1,
+        width_hpt: int = -1,
+        mode: Mode = "auto",
+    ) -> dict:
+        """Apply an underline to all text in the frame.
+
+        ``offset_hpt`` and ``width_hpt`` are in **hundredths of a point**
+        (Scribus's convention). Pass ``-1`` for either to use the font's
+        default underline metrics.
+        """
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("setUnderline", int(offset_hpt), int(width_hpt), name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_strikethrough(
+        name: str,
+        offset_hpt: int = -1,
+        width_hpt: int = -1,
+        mode: Mode = "auto",
+    ) -> dict:
+        """Apply strikethrough to all text in the frame.
+
+        ``offset_hpt`` and ``width_hpt`` are in hundredths of a point;
+        ``-1`` means font default (same convention as ``set_underline``).
+        """
+        backend = await get_backend(ctx, mode)
+        result = await backend.call(
+            "setStrikethru", int(offset_hpt), int(width_hpt), name
+        )
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_outline(name: str, width_hpt: int, mode: Mode = "auto") -> dict:
+        """Set the outline (stroke) width for text in the frame.
+
+        ``width_hpt`` is in hundredths of a point. ``0`` disables the
+        outline; positive values draw a stroke that thickness around
+        each glyph.
+        """
+        if width_hpt < 0:
+            return {"ok": False, "error": "width_hpt must be >= 0"}
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("setOutline", int(width_hpt), name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_shadow(
+        name: str,
+        x_offset_hpt: int,
+        y_offset_hpt: int,
+        mode: Mode = "auto",
+    ) -> dict:
+        """Set drop-shadow offsets for text in the frame.
+
+        Both offsets are in hundredths of a point. Positive ``y_offset_hpt``
+        moves the shadow down; positive ``x_offset_hpt`` moves it right.
+        """
+        backend = await get_backend(ctx, mode)
+        result = await backend.call(
+            "setShadow", int(x_offset_hpt), int(y_offset_hpt), name
+        )
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_text_horizontal_scale(
+        name: str,
+        scale_percent: float = 100.0,
+        mode: Mode = "auto",
+    ) -> dict:
+        """Stretch/squeeze glyphs horizontally. ``100.0`` = normal width.
+
+        Scribus internally stores this as 1/1000ths; we accept percent
+        for the API surface and convert.
+        """
+        if scale_percent <= 0:
+            return {"ok": False, "error": "scale_percent must be > 0"}
+        backend = await get_backend(ctx, mode)
+        scribus_value = int(round(scale_percent * 10))
+        result = await backend.call("setTextScalingH", scribus_value, name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_text_vertical_scale(
+        name: str,
+        scale_percent: float = 100.0,
+        mode: Mode = "auto",
+    ) -> dict:
+        """Stretch/squeeze glyphs vertically. ``100.0`` = normal height.
+
+        Same 1/1000ths conversion as ``set_text_horizontal_scale``.
+        """
+        if scale_percent <= 0:
+            return {"ok": False, "error": "scale_percent must be > 0"}
+        backend = await get_backend(ctx, mode)
+        scribus_value = int(round(scale_percent * 10))
+        result = await backend.call("setTextScalingV", scribus_value, name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_first_line_offset(
+        name: str,
+        policy: str = "real_glyph_height",
+        mode: Mode = "auto",
+    ) -> dict:
+        """Choose how the first line of text is offset from the frame's top.
+
+        ``policy``:
+        - ``real_glyph_height``: use the actual top of the rendered glyphs (default).
+        - ``font_ascent``: use the font's ascender metric.
+        - ``line_spacing``: offset by one full line's spacing.
+        - ``baseline_grid``: snap to the document baseline grid.
+        """
+        if policy not in FIRST_LINE_OFFSET:
+            return {
+                "ok": False,
+                "error": f"policy must be one of {sorted(FIRST_LINE_OFFSET)}",
+            }
+        backend = await get_backend(ctx, mode)
+        result = await backend.call(
+            "setFirstLineOffset", FIRST_LINE_OFFSET[policy], name
+        )
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()

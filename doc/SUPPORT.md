@@ -139,17 +139,19 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `setFont` | **Yes** | Set font of a frame. | `set_font`. |
 | `getFont` | **Yes** | Read font of a frame. | `get_text_frame_font`. |
 | `setFontSize` | **Yes** | Set point size. | `set_font_size`. |
-| `getFontSize` | **No** | Read point size. | Easy add if asked. |
+| `getFontSize` | **Yes** | Read point size. | `get_font_size`. |
 | `setTextColor` | **Yes** | Set text fill color (per-range with `selectText`). | `set_text_color` + used inside `create_image_caption`, `create_code_sample`, `import_markdown`. |
 | `setTextShade` | **Yes** | Tint text color 0–100. | `set_text_shade`. |
 | `setTextAlignment` | **Yes** | left / center / right / justify / forced. | `set_text_alignment`. |
 | `setTextVerticalAlignment` | **Yes** | top / center / bottom. | `set_text_vertical_alignment`. |
 | `setLineSpacing` | **Yes** | Set leading in pt. | `set_line_spacing`. |
-| `setLineSpacingMode` | **No** | Fixed / automatic / baseline. | Not yet. |
-| `setColumns` / `setColumnGap` | **No** | Multi-column text in a single frame. | Not yet — multi-column layouts use multiple frames + `link_text_frames`. |
-| `setUnderline` / `setStrikethrough` / `setOutline` / `setShadow` | **No** | Type style toggles. | Not yet. |
-| `setTextScalingH` / `setTextScalingV` | **No** | Horizontal/vertical scale. | Not yet. |
-| `setFirstLineOffset` | **No** | First-line offset mode. | Not yet. |
+| `setLineSpacingMode` | **Yes** | Fixed / automatic / baseline. | `set_line_spacing_mode`. |
+| `setColumns` / `setColumnGap` | **Yes** | Multi-column text in a single frame. | `set_columns(name, count)` and `set_column_gap(name, gap_mm)` (forces mm). |
+| `setUnderline` / `setStrikethrough` | **Yes** | Underline / strikethrough with offset+width. | `set_underline` / `set_strikethrough` (both args in 1/100 pt; `-1` = font default). |
+| `setOutline` | **Yes** | Glyph outline width. | `set_outline(name, width_hpt)` (1/100 pt). |
+| `setShadow` | **Yes** | Drop-shadow offsets. | `set_shadow(name, x_offset_hpt, y_offset_hpt)` (1/100 pt). |
+| `setTextScalingH` / `setTextScalingV` | **Yes** | Horizontal/vertical glyph scale. | `set_text_horizontal_scale` / `set_text_vertical_scale` (input in percent — converted to Scribus's 1/1000ths). |
+| `setFirstLineOffset` | **Yes** | First-line offset mode. | `set_first_line_offset(name, policy=real_glyph_height/font_ascent/line_spacing/baseline_grid)`. |
 
 ## Paragraph & character styles
 
