@@ -26,4 +26,4 @@ THIN_PT: float = 0.4
 DEFAULT_BORDER_PT: float = 0.6
 
 
-__all__ = ["HAIRLINE_PT", "THIN_PT", "DEFAULT_BORDER_PT"]
+__all__ = ["DEFAULT_BORDER_PT", "HAIRLINE_PT", "THIN_PT"]

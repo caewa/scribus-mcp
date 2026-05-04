@@ -224,8 +224,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         1/100 pt).
         """
         backend = await get_backend(ctx, mode)
-        offset_hpt = -1 if offset_pt == -1.0 else int(round(offset_pt * 100))
-        width_hpt = -1 if width_pt == -1.0 else int(round(width_pt * 100))
+        offset_hpt = -1 if offset_pt == -1.0 else round(offset_pt * 100)
+        width_hpt = -1 if width_pt == -1.0 else round(width_pt * 100)
         result = await backend.call("setUnderline", offset_hpt, width_hpt, name)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
@@ -261,8 +261,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         conversion as ``set_underline_pt`` (× 100 → Scribus's 1/100 pt).
         """
         backend = await get_backend(ctx, mode)
-        offset_hpt = -1 if offset_pt == -1.0 else int(round(offset_pt * 100))
-        width_hpt = -1 if width_pt == -1.0 else int(round(width_pt * 100))
+        offset_hpt = -1 if offset_pt == -1.0 else round(offset_pt * 100)
+        width_hpt = -1 if width_pt == -1.0 else round(width_pt * 100)
         result = await backend.call("setStrikethru", offset_hpt, width_hpt, name)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
@@ -286,7 +286,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         if width_pt < 0:
             return {"ok": False, "error": "width_pt must be >= 0"}
         backend = await get_backend(ctx, mode)
-        width_hpt = int(round(width_pt * 100))
+        width_hpt = round(width_pt * 100)
         result = await backend.call("setOutline", width_hpt, name)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
@@ -322,8 +322,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         ``x_offset_pt`` moves it right.
         """
         backend = await get_backend(ctx, mode)
-        x_hpt = int(round(x_offset_pt * 100))
-        y_hpt = int(round(y_offset_pt * 100))
+        x_hpt = round(x_offset_pt * 100)
+        y_hpt = round(y_offset_pt * 100)
         result = await backend.call("setShadow", x_hpt, y_hpt, name)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
@@ -341,7 +341,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         if scale_percent <= 0:
             return {"ok": False, "error": "scale_percent must be > 0"}
         backend = await get_backend(ctx, mode)
-        scribus_value = int(round(scale_percent * 10))
+        scribus_value = round(scale_percent * 10)
         result = await backend.call("setTextScalingH", scribus_value, name)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
@@ -358,7 +358,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         if scale_percent <= 0:
             return {"ok": False, "error": "scale_percent must be > 0"}
         backend = await get_backend(ctx, mode)
-        scribus_value = int(round(scale_percent * 10))
+        scribus_value = round(scale_percent * 10)
         result = await backend.call("setTextScalingV", scribus_value, name)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 

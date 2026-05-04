@@ -26,8 +26,8 @@ import hashlib
 import logging
 import os
 import shutil
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -183,10 +183,10 @@ def fetch_appimage_from_env(
 
 
 __all__ = [
-    "AppImageError",
     "DEFAULT_APPIMAGE_URL",
     "DEFAULT_APPIMAGE_VERSION",
     "DEFAULT_MIN_SIZE_MB",
+    "AppImageError",
     "default_install_dir",
     "fetch_appimage",
     "fetch_appimage_from_env",

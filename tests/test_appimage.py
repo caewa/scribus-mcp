@@ -21,7 +21,7 @@ from scribus_mcp import appimage
 class _FakeResponse(io.BytesIO):
     """``urlopen`` context-manager stand-in returning ``data`` once."""
 
-    def __enter__(self) -> "_FakeResponse":
+    def __enter__(self) -> _FakeResponse:
         return self
 
     def __exit__(self, *exc_info) -> None:
@@ -97,14 +97,16 @@ def test_fetch_redownloads_when_existing_sha_mismatches(tmp_path: Path):
 
 def test_size_floor_rejects_truncated_payload(tmp_path: Path):
     body = _payload(0.5)  # 0.5 MB << 50 MB floor
-    with patch.object(appimage, "urlopen", return_value=_FakeResponse(body)):
-        with pytest.raises(appimage.AppImageError, match="too small|expected >="):
-            appimage.fetch_appimage(
-                url="https://example.invalid/scribus.AppImage",
-                version="1.7.3",
-                install_dir=tmp_path,
-                log_fn=lambda _m: None,
-            )
+    with (
+        patch.object(appimage, "urlopen", return_value=_FakeResponse(body)),
+        pytest.raises(appimage.AppImageError, match=r"too small|expected >="),
+    ):
+        appimage.fetch_appimage(
+            url="https://example.invalid/scribus.AppImage",
+            version="1.7.3",
+            install_dir=tmp_path,
+            log_fn=lambda _m: None,
+        )
     # Partial file must be cleaned up
     assert not (tmp_path / "Scribus-1.7.3-x86_64.AppImage.part").exists()
     assert not appimage.install_target("1.7.3", install_dir=tmp_path).exists()
@@ -113,14 +115,16 @@ def test_size_floor_rejects_truncated_payload(tmp_path: Path):
 def test_sha256_pin_failure_aborts_install(tmp_path: Path):
     body = _payload(60)
     wrong_sha = "0" * 64
-    with patch.object(appimage, "urlopen", return_value=_FakeResponse(body)):
-        with pytest.raises(appimage.AppImageError, match="SHA256 mismatch"):
-            appimage.fetch_appimage(
-                version="1.7.3",
-                install_dir=tmp_path,
-                expected_sha256=wrong_sha,
-                log_fn=lambda _m: None,
-            )
+    with (
+        patch.object(appimage, "urlopen", return_value=_FakeResponse(body)),
+        pytest.raises(appimage.AppImageError, match="SHA256 mismatch"),
+    ):
+        appimage.fetch_appimage(
+            version="1.7.3",
+            install_dir=tmp_path,
+            expected_sha256=wrong_sha,
+            log_fn=lambda _m: None,
+        )
     assert not appimage.install_target("1.7.3", install_dir=tmp_path).exists()
 
 
@@ -140,13 +144,15 @@ def test_sha256_pin_match_succeeds(tmp_path: Path):
 def test_network_error_cleans_up_partial(tmp_path: Path):
     from urllib.error import URLError
 
-    with patch.object(appimage, "urlopen", side_effect=URLError("DNS fail")):
-        with pytest.raises(appimage.AppImageError, match="Download failed"):
-            appimage.fetch_appimage(
-                version="1.7.3",
-                install_dir=tmp_path,
-                log_fn=lambda _m: None,
-            )
+    with (
+        patch.object(appimage, "urlopen", side_effect=URLError("DNS fail")),
+        pytest.raises(appimage.AppImageError, match="Download failed"),
+    ):
+        appimage.fetch_appimage(
+            version="1.7.3",
+            install_dir=tmp_path,
+            log_fn=lambda _m: None,
+        )
     assert not (tmp_path / "Scribus-1.7.3-x86_64.AppImage.part").exists()
 
 

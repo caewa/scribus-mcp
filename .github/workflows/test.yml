@@ -1,0 +1,89 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  unit:
+    name: Unit tests (${{ matrix.os }} / Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install package + dev deps
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run unit tests
+        # ``SCRIBUS_MCP_LIVE`` is unset, so the Phase 1 / Phase 2 tests
+        # skip cleanly. We only verify the 72 unit tests that don't
+        # require a Scribus install.
+        run: pytest tests/ -q
+
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install ruff
+        run: uv pip install --system ruff
+
+      - name: Lint
+        run: ruff check src tests
+
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Build
+        run: uv build
+
+      - name: Twine check (PyPI metadata + README rendering)
+        run: uv tool run twine check dist/*
+
+      - name: Smoke-test wheel install
+        # Fresh venv, install the wheel, confirm the CLI runs and the
+        # bundled BEST_PRACTICES.md is reachable via importlib.resources.
+        run: |
+          uv venv /tmp/smoke
+          uv pip install --python /tmp/smoke/bin/python dist/*.whl
+          /tmp/smoke/bin/scribus-mcp --help > /dev/null
+          /tmp/smoke/bin/python -c "from importlib.resources import files; assert (files('scribus_mcp') / '_data' / 'BEST_PRACTICES.md').is_file()"

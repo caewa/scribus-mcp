@@ -15,7 +15,6 @@ run even when no bridge is loaded.
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 
 import pytest

@@ -12,7 +12,6 @@ from scribus_mcp.tools.layouts._geometry import (
     compute_row_bboxes,
 )
 
-
 # ----- compute_column_bboxes -----------------------------------------------
 
 
