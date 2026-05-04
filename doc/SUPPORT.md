@@ -147,9 +147,9 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `setLineSpacing` | **Yes** | Set leading in pt. | `set_line_spacing`. |
 | `setLineSpacingMode` | **Yes** | Fixed / automatic / baseline. | `set_line_spacing_mode`. |
 | `setColumns` / `setColumnGap` | **Yes** | Multi-column text in a single frame. | `set_columns(name, count)` and `set_column_gap(name, gap_mm)` (forces mm). |
-| `setUnderline` / `setStrikethrough` | **Yes** | Underline / strikethrough with offset+width. | `set_underline` / `set_strikethrough` (both args in 1/100 pt; `-1` = font default). |
-| `setOutline` | **Yes** | Glyph outline width. | `set_outline(name, width_hpt)` (1/100 pt). |
-| `setShadow` | **Yes** | Drop-shadow offsets. | `set_shadow(name, x_offset_hpt, y_offset_hpt)` (1/100 pt). |
+| `setUnderline` / `setStrikethrough` | **Yes** | Underline / strikethrough with offset+width. | `set_underline` / `set_strikethrough` (1/100 pt; `-1` = font default). Also `_pt` variants accepting points (`-1.0` = font default). |
+| `setOutline` | **Yes** | Glyph outline width. | `set_outline(name, width_hpt)` (1/100 pt) and `set_outline_pt(name, width_pt)`. |
+| `setShadow` | **Yes** | Drop-shadow offsets. | `set_shadow(name, x_offset_hpt, y_offset_hpt)` (1/100 pt) and `set_shadow_pt(name, x_offset_pt, y_offset_pt)`. |
 | `setTextScalingH` / `setTextScalingV` | **Yes** | Horizontal/vertical glyph scale. | `set_text_horizontal_scale` / `set_text_vertical_scale` (input in percent — converted to Scribus's 1/1000ths). |
 | `setFirstLineOffset` | **Yes** | First-line offset mode. | `set_first_line_offset(name, policy=real_glyph_height/font_ascent/line_spacing/baseline_grid)`. |
 

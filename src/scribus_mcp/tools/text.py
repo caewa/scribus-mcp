@@ -202,10 +202,31 @@ def register(mcp, ctx: ServerCtx) -> None:
 
         ``offset_hpt`` and ``width_hpt`` are in **hundredths of a point**
         (Scribus's convention). Pass ``-1`` for either to use the font's
-        default underline metrics.
+        default underline metrics. See ``set_underline_pt`` for a
+        point-based variant.
         """
         backend = await get_backend(ctx, mode)
         result = await backend.call("setUnderline", int(offset_hpt), int(width_hpt), name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_underline_pt(
+        name: str,
+        offset_pt: float = -1.0,
+        width_pt: float = -1.0,
+        mode: Mode = "auto",
+    ) -> dict:
+        """Apply an underline using point measurements.
+
+        ``offset_pt`` is the distance below the baseline; ``width_pt`` is
+        the line thickness. Pass ``-1.0`` for either to use the font's
+        default. Internally multiplied by 100 (Scribus stores these as
+        1/100 pt).
+        """
+        backend = await get_backend(ctx, mode)
+        offset_hpt = -1 if offset_pt == -1.0 else int(round(offset_pt * 100))
+        width_hpt = -1 if width_pt == -1.0 else int(round(width_pt * 100))
+        result = await backend.call("setUnderline", offset_hpt, width_hpt, name)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
@@ -219,6 +240,7 @@ def register(mcp, ctx: ServerCtx) -> None:
 
         ``offset_hpt`` and ``width_hpt`` are in hundredths of a point;
         ``-1`` means font default (same convention as ``set_underline``).
+        See ``set_strikethrough_pt`` for a point-based variant.
         """
         backend = await get_backend(ctx, mode)
         result = await backend.call(
@@ -227,17 +249,45 @@ def register(mcp, ctx: ServerCtx) -> None:
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
+    async def set_strikethrough_pt(
+        name: str,
+        offset_pt: float = -1.0,
+        width_pt: float = -1.0,
+        mode: Mode = "auto",
+    ) -> dict:
+        """Apply strikethrough using point measurements.
+
+        Pass ``-1.0`` for either arg to use the font's default. Same
+        conversion as ``set_underline_pt`` (× 100 → Scribus's 1/100 pt).
+        """
+        backend = await get_backend(ctx, mode)
+        offset_hpt = -1 if offset_pt == -1.0 else int(round(offset_pt * 100))
+        width_hpt = -1 if width_pt == -1.0 else int(round(width_pt * 100))
+        result = await backend.call("setStrikethru", offset_hpt, width_hpt, name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
     async def set_outline(name: str, width_hpt: int, mode: Mode = "auto") -> dict:
         """Set the outline (stroke) width for text in the frame.
 
         ``width_hpt`` is in hundredths of a point. ``0`` disables the
         outline; positive values draw a stroke that thickness around
-        each glyph.
+        each glyph. See ``set_outline_pt`` for a point-based variant.
         """
         if width_hpt < 0:
             return {"ok": False, "error": "width_hpt must be >= 0"}
         backend = await get_backend(ctx, mode)
         result = await backend.call("setOutline", int(width_hpt), name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_outline_pt(name: str, width_pt: float, mode: Mode = "auto") -> dict:
+        """Set the text outline width in points. ``0.0`` disables the outline."""
+        if width_pt < 0:
+            return {"ok": False, "error": "width_pt must be >= 0"}
+        backend = await get_backend(ctx, mode)
+        width_hpt = int(round(width_pt * 100))
+        result = await backend.call("setOutline", width_hpt, name)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
@@ -251,11 +301,30 @@ def register(mcp, ctx: ServerCtx) -> None:
 
         Both offsets are in hundredths of a point. Positive ``y_offset_hpt``
         moves the shadow down; positive ``x_offset_hpt`` moves it right.
+        See ``set_shadow_pt`` for a point-based variant.
         """
         backend = await get_backend(ctx, mode)
         result = await backend.call(
             "setShadow", int(x_offset_hpt), int(y_offset_hpt), name
         )
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def set_shadow_pt(
+        name: str,
+        x_offset_pt: float,
+        y_offset_pt: float,
+        mode: Mode = "auto",
+    ) -> dict:
+        """Set drop-shadow offsets in points.
+
+        Positive ``y_offset_pt`` moves the shadow down; positive
+        ``x_offset_pt`` moves it right.
+        """
+        backend = await get_backend(ctx, mode)
+        x_hpt = int(round(x_offset_pt * 100))
+        y_hpt = int(round(y_offset_pt * 100))
+        result = await backend.call("setShadow", x_hpt, y_hpt, name)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
