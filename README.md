@@ -88,9 +88,39 @@ Headless mode has the same constraint, since it also runs Scribus's Python.
 | Platform | How |
 |---|---|
 | **Linux** (Debian 12 / Ubuntu 23.04+ / Fedora 37+) | `sudo apt install scribus xvfb` (or distro equivalent) |
-| **Linux** (older — Ubuntu 22.04 LTS, etc.) | Download the AppImage from [scribus.net](https://www.scribus.net/downloads/), `chmod +x` it, drop it on `PATH` as `scribus` |
+| **Linux** (older — Ubuntu 22.04 LTS, etc., or distros that only ship 1.6) | `scribus-mcp --fetch-appimage` (see [Auto-fetch the Scribus AppImage](#auto-fetch-the-scribus-appimage) below), or download the AppImage manually from [scribus.net](https://www.scribus.net/downloads/) and `chmod +x` it. |
 | **Windows** | Installer from [scribus.net](https://www.scribus.net/downloads/) — default path `C:\Program Files\Scribus 1.7.3\` |
 | **macOS** | `brew install --cask scribus` or download from [scribus.net](https://www.scribus.net/downloads/) |
+
+#### Auto-fetch the Scribus AppImage
+
+If your distro only ships Scribus 1.6 (Debian 13, Ubuntu 24.04, etc.) — or you'd rather not install Scribus system-wide — the MCP can pull the official 1.7.x AppImage for you. Two entry points:
+
+```bash
+# (A) Explicit one-shot install — prints the installed path on stdout
+scribus-mcp --fetch-appimage
+# → /home/<user>/Applications/Scribus-1.7.3-x86_64.AppImage
+
+# (B) Lazy fetch — set the env var; the MCP fetches on first call when no Scribus is found
+SCRIBUS_MCP_AUTO_APPIMAGE=1 scribus-mcp
+```
+
+Either way, the AppImage lands at `~/Applications/Scribus-X.Y.Z-x86_64.AppImage`, which `scribus-mcp` already probes by default — no `SCRIBUS_BIN` tweak needed afterwards. Subsequent runs are idempotent (the file isn't redownloaded).
+
+**Caveats** (Linux only; the AppImage doesn't apply to macOS / Windows):
+
+- Pulls ~140 MB from SourceForge over HTTPS. Off by default.
+- Upstream doesn't ship a SHA256 file alongside the AppImage. The default path verifies via TLS + a 50 MB sanity floor (truncated downloads / HTML error pages get rejected). To pin a hash you computed yourself, use `--appimage-sha256 <hex>` or `SCRIBUS_MCP_APPIMAGE_SHA256=<hex>`.
+- AppImages need **FUSE** to mount — `sudo apt install fuse` on Debian/Ubuntu if Scribus fails to launch with `dlopen()` errors.
+
+Override knobs (CLI flag → env var fallback):
+
+| Flag | Env var | Default |
+|---|---|---|
+| `--appimage-url` | `SCRIBUS_MCP_APPIMAGE_URL` | SourceForge URL for the pinned default version |
+| `--appimage-version` | `SCRIBUS_MCP_APPIMAGE_VERSION` | `1.7.3` |
+| `--appimage-sha256` | `SCRIBUS_MCP_APPIMAGE_SHA256` | (no pin — TLS only) |
+| `--appimage-install-dir` | `SCRIBUS_MCP_APPIMAGE_INSTALL_DIR` | `~/Applications/` |
 
 ### Step 2 — install the MCP server
 
@@ -303,6 +333,11 @@ All env vars are optional:
 | `SCRIBUS_MCP_USE_XVFB` | `0` | Set to `1` to wrap Scribus invocations in `xvfb-run -a` |
 | `SCRIBUS_MCP_LOG_LEVEL` | `INFO` | Python log level |
 | `SCRIBUS_MCP_EXTRA_FONT_PATHS` | _(empty)_ | `os.pathsep`-separated list of directories to register as Scribus *Additional Font Paths* per headless spawn. Lets a CI worker drop fonts in a known location and have headless jobs see them without modifying the user's persistent Scribus prefs. Each spawn gets a fresh temp prefs dir cleaned up after the call. |
+| `SCRIBUS_MCP_AUTO_APPIMAGE` | `0` | Set to `1` to auto-fetch the official Scribus AppImage (Linux only) when no Scribus binary is resolvable. See [Auto-fetch the Scribus AppImage](#auto-fetch-the-scribus-appimage). |
+| `SCRIBUS_MCP_APPIMAGE_URL` | _(SourceForge URL for the pinned default version)_ | Override the AppImage download URL. |
+| `SCRIBUS_MCP_APPIMAGE_VERSION` | `1.7.3` | Override the version tag used in the installed filename and the default URL. |
+| `SCRIBUS_MCP_APPIMAGE_SHA256` | _(empty)_ | Pin a SHA256 to verify the downloaded AppImage against. Upstream doesn't publish one — you compute it yourself. |
+| `SCRIBUS_MCP_APPIMAGE_INSTALL_DIR` | `~/Applications/` | Override the AppImage install directory. |
 
 ## Tool surface
 

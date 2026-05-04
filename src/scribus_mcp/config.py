@@ -69,6 +69,11 @@ class Config:
     # Each per-job spawn will get a fresh temporary prefs dir with these
     # paths registered, then `-pr <tmpdir>` is passed to Scribus.
     extra_font_paths: tuple[str, ...] = ()
+    # Opt-in: when no Scribus binary can be resolved at launch time,
+    # fetch the official AppImage from SourceForge (Linux only — see
+    # scribus_mcp/appimage.py). Off by default since it pulls ~140 MB
+    # over the network.
+    auto_appimage: bool = False
 
     @classmethod
     def from_env(cls) -> Config:
@@ -87,6 +92,7 @@ class Config:
             log_level=os.environ.get("SCRIBUS_MCP_LOG_LEVEL", "INFO").upper(),
             use_xvfb=os.environ.get("SCRIBUS_MCP_USE_XVFB", "0") == "1",
             extra_font_paths=extra,
+            auto_appimage=os.environ.get("SCRIBUS_MCP_AUTO_APPIMAGE", "0") == "1",
         )
 
 

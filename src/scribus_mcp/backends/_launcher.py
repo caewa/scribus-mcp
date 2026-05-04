@@ -118,10 +118,24 @@ async def ensure_bridge_running(
         return False, f"bridge .spy not found at {spy}"
 
     scribus_bin = _resolve_scribus_bin(config.scribus_bin)
+    if scribus_bin is None and config.auto_appimage:
+        # Opt-in: fetch the official AppImage and use it. Runs the
+        # blocking download on a worker thread so the asyncio loop
+        # isn't pinned for the duration.
+        from scribus_mcp.appimage import AppImageError, fetch_appimage_from_env
+
+        try:
+            scribus_bin = await asyncio.to_thread(
+                fetch_appimage_from_env, log_fn=log.info
+            )
+        except AppImageError as exc:
+            return False, f"SCRIBUS_MCP_AUTO_APPIMAGE fetch failed: {exc}"
     if scribus_bin is None:
         return False, (
             f"Scribus binary not found at {config.scribus_bin!r}. "
-            "Set SCRIBUS_BIN env var or install Scribus 1.6 / 1.7."
+            "Set SCRIBUS_BIN env var, install Scribus 1.6 / 1.7, or "
+            "set SCRIBUS_MCP_AUTO_APPIMAGE=1 to auto-fetch the AppImage "
+            "(Linux only)."
         )
 
     if _scribus_already_running(config.scribus_bin):
