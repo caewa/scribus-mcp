@@ -61,14 +61,16 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `gotoPage` | **Yes** | Jump to a page. | `goto_page` |
 | `newPage` | **Yes** | Insert a page (before/after). | `add_page` |
 | `deletePage` | **Yes** | Delete a page. | `delete_page` |
-| `movePage` | **No** | Reorder pages. | Easy add if asked. |
-| `getPageSize` / `pageDimension` | **Partial** | Width/height of current page. | Surfaced via `scribus://document/info`. |
-| `getPageMargins` / `setPageMargins` | **No** | Read/write page margins. | Not yet exposed. |
-| `getHGuides` / `setHGuides` / `getVGuides` / `setVGuides` | **No** | Page guide lines. | Not yet exposed. |
+| `movePage` | **Yes** | Reorder pages. | `move_page(from_page, to_page, position=before/after/at_end)` |
+| `getPageSize` / `pageDimension` | **Yes** | Width/height of current page in mm. | `get_page_size` (forces mm; also surfaced via `scribus://document/info`). |
+| `getPageMargins` | **Yes** | Read page margins (top/left/right/bottom in mm). | `get_page_margins`. |
+| `setPageMargins` | **Yes** | Write page margins (mm). | `set_page_margins` (reorders args around Scribus's asymmetric C signature). |
+| `getHGuides` / `setHGuides` | **Yes** | Horizontal guide y-positions (mm). | `get_horizontal_guides` / `set_horizontal_guides`. |
+| `getVGuides` / `setVGuides` | **Yes** | Vertical guide x-positions (mm). | `get_vertical_guides` / `set_vertical_guides`. |
 | `masterPageNames` | **Yes** | List all master pages. | `list_master_pages` |
 | `createMasterPage` | **Yes** | Create a master page. | `create_master_page` |
 | `applyMasterPage` | **Yes** | Apply master to a page. | `apply_master_page` |
-| `deleteMasterPage` | **No** | Remove a master page. | Easy add if asked. |
+| `deleteMasterPage` | **Yes** | Remove a master page. | `delete_master_page`. |
 | `editMasterPageMode` / `closeMasterPageMode` | **No** | Switch into master-page editor. | Modal — out of scope. |
 
 ## Frames & object creation
