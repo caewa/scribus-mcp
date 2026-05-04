@@ -39,6 +39,13 @@ def register(mcp, ctx: ServerCtx) -> None:
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
+    async def get_current_page(mode: Mode = "auto") -> dict:
+        """Return the 1-indexed number of the active working page."""
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("currentPage")
+        return {"ok": result.ok, "page": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
     async def apply_master_page(
         master_page_name: str,
         page_number: int,

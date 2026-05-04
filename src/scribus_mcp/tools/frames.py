@@ -91,6 +91,122 @@ def register(mcp, ctx: ServerCtx) -> None:
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
+    async def get_object_position(name: str, mode: Mode = "auto") -> dict:
+        """Return ``{x_mm, y_mm}`` of the object's top-left corner.
+
+        Forces the document unit to mm before reading so the values
+        always mean millimeters regardless of the doc's current unit.
+        """
+        backend = await get_backend(ctx, mode)
+        body = (
+            "import scribus as _s\n"
+            "try:\n"
+            "    _s.setUnit(_s.UNIT_MILLIMETERS)\n"
+            "except Exception:\n"
+            "    pass\n"
+            f"_value = list(_s.getPosition({name!r}))\n"
+        )
+        result = await backend.script(body, result_expr="_value")
+        pos = result.unwrap_or() or [None, None]
+        return {
+            "ok": result.ok,
+            "x_mm": pos[0],
+            "y_mm": pos[1],
+            "error": result.error,
+        }
+
+    @mcp.tool()
+    async def get_object_size(name: str, mode: Mode = "auto") -> dict:
+        """Return ``{width_mm, height_mm}`` of the object's bounding box.
+
+        Forces the document unit to mm before reading.
+        """
+        backend = await get_backend(ctx, mode)
+        body = (
+            "import scribus as _s\n"
+            "try:\n"
+            "    _s.setUnit(_s.UNIT_MILLIMETERS)\n"
+            "except Exception:\n"
+            "    pass\n"
+            f"_value = list(_s.getSize({name!r}))\n"
+        )
+        result = await backend.script(body, result_expr="_value")
+        size = result.unwrap_or() or [None, None]
+        return {
+            "ok": result.ok,
+            "width_mm": size[0],
+            "height_mm": size[1],
+            "error": result.error,
+        }
+
+    @mcp.tool()
+    async def object_exists(name: str, mode: Mode = "auto") -> dict:
+        """Return ``{exists: bool}`` for the given object name."""
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("objectExists", name)
+        return {
+            "ok": result.ok,
+            "exists": bool(result.unwrap_or()),
+            "error": result.error,
+        }
+
+    @mcp.tool()
+    async def group_objects(names: list[str], mode: Mode = "auto") -> dict:
+        """Group the named objects. Returns ``{name}`` of the new group.
+
+        Captures page items before/after the group call to discover the
+        generated group name (Scribus's ``groupObjects`` returns ``None``).
+        """
+        if not names:
+            return {"ok": False, "error": "names must contain at least one object"}
+        backend = await get_backend(ctx, mode)
+        body = (
+            "import scribus as _s\n"
+            f"_names = {list(names)!r}\n"
+            "_before = set(_it[0] for _it in (_s.getPageItems() or []))\n"
+            "_s.groupObjects(_names)\n"
+            "_after = set(_it[0] for _it in (_s.getPageItems() or []))\n"
+            "_new = sorted(_after - _before - set(_names))\n"
+            "_value = _new[-1] if _new else None\n"
+        )
+        result = await backend.script(body, result_expr="_value")
+        return {"ok": result.ok, "name": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def outline_text(name: str, mode: Mode = "auto") -> dict:
+        """Convert a text frame to vector polygon outlines.
+
+        Replaces the original text frame with one polygon per glyph
+        (named ``<orig>+U0``, ``+U1``, ...). Returns ``{names}`` of the
+        polygons created so callers can group/move/recolor them.
+        """
+        backend = await get_backend(ctx, mode)
+        body = (
+            "import scribus as _s\n"
+            "_before = set(_it[0] for _it in (_s.getPageItems() or []))\n"
+            f"_s.layoutText({name!r})\n"
+            f"_s.traceText({name!r})\n"
+            "_after = set(_it[0] for _it in (_s.getPageItems() or []))\n"
+            "_value = sorted(_after - _before)\n"
+        )
+        result = await backend.script(body, result_expr="_value")
+        return {"ok": result.ok, "names": result.unwrap_or() or [], "error": result.error}
+
+    @mcp.tool()
+    async def layout_text(name: str, chain: bool = False, mode: Mode = "auto") -> dict:
+        """Force a text frame to (re-)lay out its content.
+
+        ``chain=True`` lays out the entire linked chain starting at
+        ``name`` (uses ``layoutTextChain``); otherwise just the single
+        frame (``layoutText``). Useful before reading geometry-derived
+        values like ``getSize`` on outlined text.
+        """
+        backend = await get_backend(ctx, mode)
+        method = "layoutTextChain" if chain else "layoutText"
+        result = await backend.call(method, name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
     async def list_page_objects(mode: Mode = "auto") -> dict:
         """Return the objects on the current page as [{name, type}].
 

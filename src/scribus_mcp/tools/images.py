@@ -12,6 +12,17 @@ def register(mcp, ctx: ServerCtx) -> None:
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
+    async def get_image_file(name: str, mode: Mode = "auto") -> dict:
+        """Return ``{path}`` of the image currently loaded in the frame.
+
+        Empty string if no image is loaded. The path may be relative to
+        the document if it was stored that way at load time.
+        """
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("getImageFile", name)
+        return {"ok": result.ok, "path": result.unwrap_or() or "", "error": result.error}
+
+    @mcp.tool()
     async def set_image_scale(
         name: str, x_scale: float, y_scale: float, mode: Mode = "auto"
     ) -> dict:

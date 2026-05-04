@@ -81,6 +81,19 @@ def register(mcp, ctx: ServerCtx) -> None:
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
+    async def set_text_shade(name: str, shade: int, mode: Mode = "auto") -> dict:
+        """Tint the text fill 0–100 (% of the base color).
+
+        Not all Scribus builds expose ``setTextShade``; on those builds
+        the call returns an error and the visual stays at 100%.
+        """
+        if not 0 <= shade <= 100:
+            return {"ok": False, "error": "shade must be between 0 and 100"}
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("setTextShade", int(shade), name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
     async def set_text_alignment(
         name: str,
         alignment: str = "left",

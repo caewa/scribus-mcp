@@ -38,7 +38,6 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | Scripter function | Supported | Description | MCP tool / remarks |
 |---|---|---|---|
 | `newDocument` | **Yes** | Create a new document (size, margins, orientation, units, columns). | `create_document` |
-| `newDoc` (legacy) | **No** | Older alias of `newDocument`. | Use `new_document`. |
 | `newDocDialog` | **No** | Pops the New Document modal. | Modal — out of scope for MCP. |
 | `closeDoc` | **Yes** | Close current document. | `close_document` |
 | `haveDoc` | **Partial** | Returns True if any doc is open. | Used internally by `scribus://document/info` resource. |
@@ -58,7 +57,7 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | Scripter function | Supported | Description | MCP tool / remarks |
 |---|---|---|---|
 | `pageCount` | **Yes** | Number of pages. | `get_page_count` |
-| `currentPage` | **Partial** | Index of current page. | Used by export + resources. |
+| `currentPage` | **Yes** | Index of current page. | `get_current_page` |
 | `gotoPage` | **Yes** | Jump to a page. | `goto_page` |
 | `newPage` | **Yes** | Insert a page (before/after). | `add_page` |
 | `deletePage` | **Yes** | Delete a page. | `delete_page` |
@@ -88,12 +87,12 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `createBarcode` | **Yes** | Barcode/QR code. | `create_qr_code_block` pattern. |
 | `createTable` | **No** | Native Scribus table object. | Not yet — `create_comparison_table` builds a grid of rects/text instead. |
 | `createCustomLineStyle` | **No** | Define a multi-segment line style. | Out of scope. |
-| `groupObjects` | **Partial** | Group selected objects. | Used internally by `create_numbered_badge` to bundle multi-glyph outlines. |
+| `groupObjects` | **Yes** | Group a list of objects by name. | `group_objects` (returns the new group's name). |
 | `unGroupObjects` | **No** | Ungroup. | Not yet. |
 | `combinePolygons` | **No** | Boolean union of polygons. | Not yet. |
 | `duplicateObject` / `copyObject` / `pasteObject` | **No** | Clipboard ops. | Not yet. |
 | `deleteObject` | **Yes** | Remove an object. | `delete_object`. |
-| `objectExists` | **Partial** | Test name presence. | Used implicitly in error paths. |
+| `objectExists` | **Yes** | Test name presence. | `object_exists`. |
 | `selectObject` / `deselectAll` / `selectionCount` / `getSelectedObject` | **No** | Selection model. | Tools take object names directly; no global selection in headless flow. |
 
 ## Object geometry & manipulation
@@ -105,9 +104,9 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `sizeObject` | **Yes** | Resize an object. | `resize_object`. |
 | `rotateObject` / `rotateObjectAbs` | **Yes** | Rotate by delta / to absolute angle. | `rotate_object(absolute=False/True)`. |
 | `scaleGroup` | **No** | Scale a group proportionally. | Not yet. |
-| `getPosition` | **Partial** | (x, y) of object. | Used by `create_numbered_badge`. |
-| `getSize` | **Partial** | (w, h) of object. | Used by `create_numbered_badge`. |
-| `traceText` / `outlineText` | **Partial** | Convert text frame to vector outlines. | Used by `create_numbered_badge` for pixel-perfect digit centering. |
+| `getPosition` | **Yes** | (x, y) of object in mm. | `get_object_position` (forces mm before reading). |
+| `getSize` | **Yes** | (w, h) of object in mm. | `get_object_size` (forces mm before reading). |
+| `traceText` / `outlineText` | **Yes** | Convert text frame to vector outlines. | `outline_text` (returns the names of generated polygons). |
 | `lockObject` / `isLocked` | **No** | Lock/unlock for editing. | Not yet. |
 | `getName` / `renameObject` | **No** | Read/write object name. | Names are returned at creation time. |
 | `getProperty` / `setProperty` / `getPropertyCType` / `getPropertyType` | **Partial** | Generic Qt property reflection. | Used by the `find_objects` search path. Powerful but rarely needed directly. |
@@ -120,8 +119,7 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `setText` | **Yes** | Replace a frame's text. | `set_text` (and used inside ~25 other tools). |
 | `insertText` | **Partial** | Insert at offset. | Used inside `append_text`. |
 | `deleteText` | **No** | Delete a range. | Not yet. |
-| `getText` (legacy) | **No** | Older alias. | Use `get_text` (mapped to `getAllText`). |
-| `getAllText` | **Yes** | Full story text. | `get_text`. Preferred over `getText` since it returns the full chained story. |
+| `getAllText` | **Yes** | Full story text. | `get_text`. |
 | `getFrameText` | **Yes** | Only laid-out (visible) text. | `get_visible_text`. May return empty if not yet laid out. |
 | `selectText` | **Partial** | Select a character range. | Used internally by `create_image_caption`, `create_code_sample`, `import_markdown`. Combined with `setTextColor` to apply per-range colors. |
 | `selectAll` | **No** | Select entire story. | Not yet. |
@@ -130,7 +128,7 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `linkTextFrames` | **Yes** | Link frames into a chain. | `link_text_frames`. |
 | `unlinkTextFrames` | **No** | Break a link. | Not yet. |
 | `textOverflows` | **Yes** | True if frame has overset text. | `is_text_overflowing`. |
-| `layoutText` / `layoutTextChain` | **Partial** | Force re-layout. | Used inside `create_numbered_badge` before tracing. |
+| `layoutText` / `layoutTextChain` | **Yes** | Force re-layout. | `layout_text(chain=False/True)`. |
 
 ## Text formatting
 
@@ -141,7 +139,7 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `setFontSize` | **Yes** | Set point size. | `set_font_size`. |
 | `getFontSize` | **No** | Read point size. | Easy add if asked. |
 | `setTextColor` | **Yes** | Set text fill color (per-range with `selectText`). | `set_text_color` + used inside `create_image_caption`, `create_code_sample`, `import_markdown`. |
-| `setTextShade` | **Partial** | Tint text color 0–100. | Wrapped by `setTextShade` direct call but no dedicated tool yet. |
+| `setTextShade` | **Yes** | Tint text color 0–100. | `set_text_shade`. |
 | `setTextAlignment` | **Yes** | left / center / right / justify / forced. | `set_text_alignment`. |
 | `setTextVerticalAlignment` | **Yes** | top / center / bottom. | `set_text_vertical_alignment`. |
 | `setLineSpacing` | **Yes** | Set leading in pt. | `set_line_spacing`. |
@@ -168,7 +166,6 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 |---|---|---|---|
 | `getColorNames` | **Yes** | All defined color names. | `list_colors`. |
 | `getColor` / `getColorAsRGB` / `getColorAsCMYK` | **No** | Read components of a defined color. | Easy add if asked. |
-| `defineColor` (legacy) | **No** | Older alias. | Use `defineColorCMYK*`. |
 | `defineColorCMYK` | **No** | CMYK 0–255 ints. | Use `define_color_cmyk` (float). |
 | `defineColorCMYKFloat` | **Yes** | CMYK 0.0–100.0. | `define_color_cmyk`. |
 | `defineColorRGB` | **Yes** | RGB 0–255. | `define_color_rgb` + auto-called by `create_code_sample` for syntax token colors. |
@@ -209,7 +206,7 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `setScaleImageToFrame` | **Yes** | Auto scale + proportional flag. | `scale_image_to_frame`. |
 | `setScaleFrameToImage` | **No** | Resize frame to image's pixel size. | Easy add if asked. |
 | `getImageScale` | **No** | Read current scale. | Not yet. |
-| `getImageFile` | **Partial** | Path of loaded image. | Used by missing-resources resource. |
+| `getImageFile` | **Yes** | Path of loaded image. | `get_image_file`. |
 | `getImageColorSpace` | **No** | RGB / CMYK / grayscale. | Not yet. |
 | `imageGetColors` / `imageGetCMYK` | **No** | Pixel inspection. | Not yet — outside MCP scope. |
 
@@ -233,7 +230,7 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 
 | Scripter function | Supported | Description | MCP tool / remarks |
 |---|---|---|---|
-| `getPageItems` | **Partial** | List `(name, type, info)` per page. | Used internally by `find_objects`, `preflight_check`, all resources. |
+| `getPageItems` | **Yes** | List `(name, type, info)` per page. | `list_page_objects` (also used internally by `find_objects`, `preflight_check`, all resources). |
 | `getAllObjects` | **No** | Cross-page version. | Use `find_objects` (which iterates pages). |
 | `isAnnotated` | **Yes** | True if object is a PDF annotation; returns metadata tuple. | `is_annotated`. |
 | `isPDFBookmark` | **No** | True if object is a bookmark. | Not yet. |
