@@ -232,18 +232,23 @@ If `qt=` says `NONE-thread-fallback`, the Qt binding isn't being detected — re
 
 The MCP server reads `<runtime-dir>/scribus-mcp/scribus-mcp.json` automatically (port + auth token). Once that file exists, every tool call with `mode="auto"` (or `"interactive"`) is routed to your live Scribus instead of spawning a new one.
 
-### Step 5 (Windows) — Skip the "New Document" startup dialog
+### Step 5 — Skip the "New Document" startup dialog
 
 By default Scribus shows a New Document wizard at every launch, which **blocks `-py` script execution** until dismissed. Disable it once with:
 
 ```powershell
-# Close Scribus first, then:
+# Windows — close Scribus first, then:
 & .\scripts\disable-startup-dialog-windows.ps1
 ```
 
-This sets `ShowStartupDialog="0"` in your user prefs (`%APPDATA%\Scribus\scribus172.rc`). It's persistent across launches and reversible with `-Enable`. Use `-Force` for non-interactive flows (e.g. CI). You can also do this manually via `File → Preferences → General → uncheck "Always show 'New Document' dialog at startup"`.
+```bash
+# Linux — close Scribus first, then:
+./scripts/disable-startup-dialog-linux.sh
+```
 
-The same setting exists on Linux/macOS (in `~/.config/scribus/scribus172.rc` or similar) and can be flipped the same way — separate helper TBD.
+Both set `ShowStartupDialog="0"` in your user prefs (`%APPDATA%\Scribus\scribusXYZ.rc` on Windows, `~/.config/scribus/scribusXYZ.rc` on Linux), where `XYZ` is the Scribus minor version (`172`, `163`, …). Persistent across launches; reversible with `-Enable` / `--enable`; use `-Force` / `--force` for non-interactive flows (CI, auto-spawn). You can also flip it manually via `File → Preferences → General → uncheck "Always show 'New Document' dialog at startup"`.
+
+> **First-run note:** the prefs file is created by Scribus on its first save, so you need to launch Scribus once and exit (you can dismiss the welcome dialog inline) before either script can find a file to edit. macOS uses the same XML; the helper for it is TBD.
 
 ### Optional: autoload at Scribus startup
 

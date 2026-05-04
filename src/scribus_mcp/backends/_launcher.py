@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import shutil
 import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 from scribus_mcp.backends.interactive import InteractiveBackend
@@ -11,6 +14,51 @@ from scribus_mcp.bridge import bridge_path
 from scribus_mcp.config import Config
 
 log = logging.getLogger(__name__)
+
+_VERSION_RE = re.compile(r"\b(\d+)\.(\d+)(?:\.\d+)?\b")
+
+
+def _resolve_scribus_bin(scribus_bin: str) -> Path | None:
+    """Return an existing path for ``scribus_bin`` or ``None``.
+
+    Accepts both absolute paths and bare command names (``"scribus"``),
+    resolving the latter via ``$PATH`` so the launcher matches the headless
+    backend's lookup behavior.
+    """
+    p = Path(scribus_bin)
+    if p.is_absolute() or p.exists():
+        return p if p.exists() else None
+    found = shutil.which(scribus_bin)
+    return Path(found) if found else None
+
+
+@lru_cache(maxsize=8)
+def _detect_scribus_version(scribus_bin: str) -> tuple[int, int] | None:
+    """Probe ``<scribus_bin> -v`` and return ``(major, minor)`` or ``None``.
+
+    Cached per binary path. Output is localized (``"Scribus Version 1.7.3"``
+    vs. ``"Version de Scribus 1.6.3"``), so we just regex the first
+    ``MAJOR.MINOR`` number on stdout. Returns ``None`` if the probe fails or
+    no version-shaped token is found.
+    """
+    try:
+        result = subprocess.run(
+            [scribus_bin, "-v"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError) as exc:
+        # ValueError catches the case where subprocess.Popen has been
+        # mocked by a test harness — the launcher tests stub it out and
+        # we don't want a version probe to bring them down.
+        log.debug("scribus -v probe failed: %s", exc)
+        return None
+    blob = (result.stdout or "") + "\n" + (result.stderr or "")
+    match = _VERSION_RE.search(blob)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
 
 
 def _scribus_already_running(scribus_bin: str) -> bool:
@@ -31,8 +79,12 @@ def _scribus_already_running(scribus_bin: str) -> bool:
                 timeout=3,
             )
             return proc_name.lower() in out.stdout.lower()
+        # Match the exact process name (``/proc/PID/comm``), not the full
+        # command line: ``-f`` would also match anything with ``scribus``
+        # in its argv — including pytest invocations from a checkout
+        # path like ``.../scribus-mcp/...`` — and trip the dup guard.
         result = subprocess.run(
-            ["pgrep", "-f", proc_name],
+            ["pgrep", "-x", proc_name],
             capture_output=True,
             text=True,
             timeout=3,
@@ -65,11 +117,11 @@ async def ensure_bridge_running(
     if not spy.is_file():
         return False, f"bridge .spy not found at {spy}"
 
-    scribus_bin = Path(config.scribus_bin)
-    if not scribus_bin.exists():
+    scribus_bin = _resolve_scribus_bin(config.scribus_bin)
+    if scribus_bin is None:
         return False, (
             f"Scribus binary not found at {config.scribus_bin!r}. "
-            "Set SCRIBUS_BIN env var or install Scribus 1.7."
+            "Set SCRIBUS_BIN env var or install Scribus 1.6 / 1.7."
         )
 
     if _scribus_already_running(config.scribus_bin):
@@ -79,8 +131,15 @@ async def ensure_bridge_running(
             f"{spy} (or close that Scribus instance and retry to auto-launch)."
         )
 
-    cmd = [str(scribus_bin), "-ns", "-cl", "-py", str(spy)]
-    log.info("Auto-launching Scribus + bridge: %s", cmd)
+    # ``-cl`` (console-only) is a Scribus 1.7+ flag; on 1.6 it's parsed as
+    # a filename to open, which silently breaks ``-py`` execution. Probe
+    # the binary and only emit the flag when we know it's supported.
+    cmd = [str(scribus_bin), "-ns"]
+    version = _detect_scribus_version(str(scribus_bin))
+    if version is not None and version >= (1, 7):
+        cmd.append("-cl")
+    cmd += ["-py", str(spy)]
+    log.info("Auto-launching Scribus %s + bridge: %s", version, cmd)
 
     try:
         kwargs: dict = {

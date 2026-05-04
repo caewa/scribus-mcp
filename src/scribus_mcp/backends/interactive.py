@@ -9,6 +9,14 @@ from typing import Any
 from scribus_mcp.backends.base import BackendError, ScribusBackend, ScribusResult
 from scribus_mcp.config import Config, read_discovery
 
+# StreamReader buffer for the bridge's one-line JSON response. The asyncio
+# default is 64 KiB, which a single ``list_fonts_detailed`` payload on a
+# system with hundreds of fonts blows through (Scripter returns the full
+# family/style/file path tuple per font). A render_page_to_image response
+# carrying a base64 PNG can also exceed it. 16 MiB is well past any real
+# Scripter return value while still bounded.
+_STREAM_LIMIT = 16 * 1024 * 1024
+
 
 class InteractiveBackend(ScribusBackend):
     """TCP loopback client that talks to a bridge.spy running inside Scribus.
@@ -80,7 +88,8 @@ class InteractiveBackend(ScribusBackend):
 
         try:
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(host, port), timeout=2.0
+                asyncio.open_connection(host, port, limit=_STREAM_LIMIT),
+                timeout=2.0,
             )
         except (TimeoutError, OSError) as exc:
             if await self._try_relaunch():
@@ -92,7 +101,8 @@ class InteractiveBackend(ScribusBackend):
                 wire = (json.dumps(msg) + "\n").encode("utf-8")
                 try:
                     reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection(host, port), timeout=2.0
+                        asyncio.open_connection(host, port, limit=_STREAM_LIMIT),
+                        timeout=2.0,
                     )
                 except (TimeoutError, OSError) as exc2:
                     raise BackendError(
