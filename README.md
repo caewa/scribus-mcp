@@ -2,6 +2,38 @@
 
 An MCP (Model Context Protocol) server that lets Claude drive [Scribus](https://www.scribus.net/) — the open-source desktop publishing app — through its Python Scripter API.
 
+## TL;DR — wire it to Claude Code (Linux, fully auto)
+
+One command, both auto-downloads stacked: `uvx` fetches the MCP server from PyPI on demand, and `SCRIBUS_MCP_AUTO_APPIMAGE=1` makes the launcher pull the official Scribus 1.7.x AppImage to `~/Applications/` on the first interactive tool call. No system-wide install of either piece needed.
+
+```bash
+claude mcp add scribus -s user -e SCRIBUS_MCP_AUTO_APPIMAGE=1 -- uvx scribus-mcp
+```
+
+One-time prerequisites on Debian/Ubuntu (the AppImage needs FUSE, the QR-code tool needs Ghostscript):
+
+```bash
+sudo apt install fuse libfuse2t64 ghostscript
+```
+
+Restart Claude Code so it picks up the new server. Ask Claude to make any document — both downloads kick off in sequence (~5 sec for `uvx`, ~30–60 sec for the AppImage on first call), then everything's cached for subsequent sessions.
+
+> **First-run papercut on Linux:** Scribus's "New Document" wizard blocks `-py` execution until dismissed. Launch the AppImage once (`~/Applications/Scribus-1.7.3-x86_64.AppImage`), dismiss the welcome, quit, then run `./scripts/disable-startup-dialog-linux.sh --force` (clone the repo first) so the prefs file persists `ShowStartupDialog="0"`. After that, every session is hands-off.
+
+**Updating after a new release:** `uvx` caches package metadata for ~15 minutes, so a freshly-published version may not be picked up immediately. Force a refresh with:
+
+```bash
+uvx --refresh scribus-mcp --help
+# or wipe just this package's cache:
+uv cache clean scribus-mcp
+```
+
+Then restart Claude Code (or `/mcp` reconnect inside it) so the spawned server reloads.
+
+For Windows / macOS / non-`uvx` paths, see [Install](#install).
+
+## What's in it
+
 Two backends behind one tool surface:
 
 - **Headless** — fires a fresh `scribus -g -py …` per call. Best for batch jobs (CI manual generation, data merges).
