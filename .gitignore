@@ -33,6 +33,7 @@ ENV/
 htmlcov/
 coverage.xml
 .cache/
+uv.lock
 
 # Environment & secrets
 .env
