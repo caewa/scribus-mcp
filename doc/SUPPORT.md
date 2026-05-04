@@ -40,13 +40,13 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `newDocument` | **Yes** | Create a new document (size, margins, orientation, units, columns). | `create_document` |
 | `newDocDialog` | **No** | Pops the New Document modal. | Modal — out of scope for MCP. |
 | `closeDoc` | **Yes** | Close current document. | `close_document` |
-| `haveDoc` | **Partial** | Returns True if any doc is open. | Used internally by `scribus://document/info` resource. |
+| `haveDoc` | **Yes** | Returns True if any doc is open. | `has_document` (also surfaced via `scribus://document/info`). |
 | `openDoc` | **Yes** | Open an existing `.sla`. | `open_document` |
 | `saveDoc` | **Yes** | Save under existing path. | `save_document` |
 | `saveDocAs` | **Yes** | Save to a new path. | `save_document_as` |
-| `revertDoc` | **No** | Reload from disk discarding edits. | Easy add if asked. |
-| `getDocName` | **Partial** | Path of the current document. | Surfaced via `scribus://document/info` resource. |
-| `setUnit` / `getUnit` | **Partial** | Document unit (mm, pt, in, p, cm). | All MCP tools take mm directly; surfaced read-only via `scribus://document/info`. |
+| `revertDoc` | **Yes** | Reload from disk discarding edits. | `revert_document`. |
+| `getDocName` | **Yes** | Path of the current document. | `get_document_name`. |
+| `setUnit` / `getUnit` | **Yes** | Document unit (mm, pt, in, p, cm, c). | `get_unit` / `set_unit` (string-based). MCP geometry tools still take mm regardless. |
 | `setRedraw` / `redrawAll` | **No** | Toggle / force canvas redraw. | Bridge handles redraws at job boundaries; not exposed. |
 | `setInfo` | **Yes** | Set Title / Author / Description metadata. | Via `set_document_metadata`. |
 | `getInfo` (if present) | **No** | Read back metadata. | Not in 1.7 surface in our reads — file ground-truth check above. |

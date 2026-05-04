@@ -12,6 +12,18 @@ FIRST_PAGE_LEFT = 0
 ORIENTATION_PORTRAIT = 0
 ORIENTATION_LANDSCAPE = 1
 
+# Scribus unit constants. Strings used as the public surface of
+# get_unit / set_unit so callers don't deal with raw ints.
+UNIT_NAMES: dict[str, int] = {
+    "pt": 0,  # points
+    "mm": 1,  # millimetres
+    "in": 2,  # inches
+    "p": 3,  # picas
+    "cm": 4,  # centimetres
+    "c": 5,  # ciceros
+}
+UNIT_INTS: dict[int, str] = {v: k for k, v in UNIT_NAMES.items()}
+
 
 def register(mcp, ctx: ServerCtx) -> None:
     @mcp.tool()
@@ -90,6 +102,74 @@ def register(mcp, ctx: ServerCtx) -> None:
             "}"
         )
         result = await backend.script(body, result_expr="_value")
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def has_document(mode: Mode = "auto") -> dict:
+        """Return ``{has_doc: bool}`` — whether any document is currently open."""
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("haveDoc")
+        return {
+            "ok": result.ok,
+            "has_doc": bool(result.unwrap_or()),
+            "error": result.error,
+        }
+
+    @mcp.tool()
+    async def get_document_name(mode: Mode = "auto") -> dict:
+        """Return ``{path}`` — filesystem path of the active document, or empty if unsaved."""
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("getDocName")
+        return {
+            "ok": result.ok,
+            "path": result.unwrap_or() or "",
+            "error": result.error,
+        }
+
+    @mcp.tool()
+    async def revert_document(mode: Mode = "auto") -> dict:
+        """Reload the active document from disk, discarding unsaved edits.
+
+        No-op (and returns an error) if the document has never been
+        saved — there's nothing on disk to revert to.
+        """
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("revertDoc")
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def get_unit(mode: Mode = "auto") -> dict:
+        """Return ``{unit}`` — the document's current measurement unit.
+
+        One of: ``pt`` | ``mm`` | ``in`` | ``p`` (picas) | ``cm`` | ``c``
+        (ciceros). Returns the raw int as ``unit_int`` too so callers
+        can detect unknown future units.
+        """
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("getUnit")
+        raw = result.unwrap_or()
+        return {
+            "ok": result.ok,
+            "unit": UNIT_INTS.get(raw, ""),
+            "unit_int": raw,
+            "error": result.error,
+        }
+
+    @mcp.tool()
+    async def set_unit(unit: str, mode: Mode = "auto") -> dict:
+        """Set the document's measurement unit.
+
+        ``unit``: ``pt`` | ``mm`` | ``in`` | ``p`` | ``cm`` | ``c``.
+
+        Note: the MCP geometry tools all take and return millimetres
+        regardless of this setting — they force mm internally before
+        reading. Changing the unit is mainly about how Scribus shows
+        and persists coordinates in the saved ``.sla``.
+        """
+        if unit not in UNIT_NAMES:
+            return {"ok": False, "error": f"unit must be one of {sorted(UNIT_NAMES)}"}
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("setUnit", UNIT_NAMES[unit])
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
