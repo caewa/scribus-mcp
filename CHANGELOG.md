@@ -5,6 +5,97 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] — 2026-05-04
+
+Bug-fix release driven by issues seen in real LLM-produced documents.
+No tool removals or breaking changes.
+
+### Added
+
+- **`auto_height=True` on `create_callout_box` and `create_card_grid`.**
+  After `setText` the tool runs Scribus's `layoutText` /
+  `textOverflows` to find the smallest non-truncating body height and
+  resizes the body frame, the background rect, and (for cards) the
+  accent stripe to fit. For `card_grid`, every card in a row adopts
+  that row's tallest fitted height so the row stays visually uniform,
+  and rows below are repacked upward to remove the gap. Returns the
+  fitted `height_mm` / `grid_height_mm` for chaining via
+  `PageCursor.jump_to(...)`. Fixes the cards-with-short-body whitespace
+  problem the cards in the "Security model" section exhibited.
+  ([src/scribus_mcp/tools/_fit.py](src/scribus_mcp/tools/_fit.py),
+  [doc/BEST_PRACTICES.md](doc/BEST_PRACTICES.md#cards-with-short-body-text--auto_heighttrue))
+- **`clean_user_text` boundary helper** in
+  [src/scribus_mcp/tools/_common.py](src/scribus_mcp/tools/_common.py) —
+  defensive `html.unescape` applied at every user-text `setText` call
+  site, so an LLM that pre-encodes `&` as `&amp;` (or `<` as `&lt;`,
+  etc.) doesn't leak the encoded form into the rendered PDF. Single-
+  pass: `&amp;amp;` → `&amp;` (intent preserved). `&nbsp;` decodes to
+  U+00A0, so `"Apache&nbsp;2.0"` keeps the version glued to the name.
+  Skipped for `create_code_sample` (code may legitimately contain
+  literal entities) and `find_and_replace_text` (search patterns).
+- **`CHANGELOG.md`** (this file). Earlier 1.0.0 work is back-filled.
+- **Test CI workflow** ([.github/workflows/test.yml](.github/workflows/test.yml))
+  running unit tests on Linux + macOS + Windows × Python 3.11 / 3.12 /
+  3.13, plus `ruff check`, `uv build`, `twine check`, and a fresh-venv
+  wheel-install smoke test. The publish workflow already existed; this
+  is the matching gate on PRs and pushes to `main`.
+- **`doc/BEST_PRACTICES.md`** — three new rules an LLM driving the MCP
+  should follow:
+  - Pass plain text; never HTML-escape (covers the `clean_user_text`
+    contract above).
+  - Use two frames for left+right page chrome; don't pad with spaces.
+    Documents the `"…rtos                            page 3 / 5"`
+    anti-pattern that produces ragged-right footers per page.
+  - Use `auto_height=True` for cards with variable-length body text.
+
+### Fixed
+
+- **HTML entities rendered as literal characters in produced PDFs.**
+  LLM clients sometimes pre-encode user text (`"AT&amp;T"`,
+  `"OVERVIEW &AMP; KERNEL FEATURES"`, `"Kernel &amp;amp; runtime"`),
+  treating it as if it were destined for HTML. Scribus stored those
+  strings verbatim, then re-XML-escaped on save, so the rendered PDF
+  showed the literal characters. The boundary decode (above) cures it
+  at every user-text `setText` callsite — `set_text` / `append_text`,
+  every pattern's `title` / `caption` / `label` / `body`, every
+  layout's `title` / `eyebrow` / `subtitle` / `right_text`, form
+  `default_value` / `label`, annotation `link_text`, etc.
+- **KPI tile values overflowing horizontally and wrapping to two
+  lines.** `create_kpi_tile` previously only auto-shrunk the value
+  font on vertical fit; long values like `"Apache 2.0"` at 22 pt in a
+  ~33 mm-wide tile rendered over two lines because the horizontal axis
+  wasn't checked. Added a horizontal-fit pass that takes the smaller
+  of vertical and horizontal max font sizes, with a 6 pt minimum
+  floor.
+- **Wheel build failure (`Forced include not found:
+  doc/BEST_PRACTICES.md`).** `uv build` rolls a sdist first then
+  builds the wheel from inside the unpacked sdist, but
+  `[tool.hatch.build].include` only listed `src/**` paths so `doc/`
+  was missing in the sdist phase. Added an explicit
+  `[tool.hatch.build.targets.sdist].include` listing pulling in the
+  doc file plus `LICENSE` and `README.md`.
+- **Test CI install step couldn't find a Python interpreter.** First
+  run of `test.yml` had every job failing at `uv pip install --system
+  -e ".[dev]"` because PEP 668's `EXTERNALLY-MANAGED` marker on Ubuntu
+  24.04's system Python rejects `--system`, and `setup-uv@v5`'s
+  managed Python isn't on `$PATH`. Switched to `uv sync --extra dev`
+  + `uv run <tool>` (the canonical Astral pattern).
+- **Windows test job failure.** `tests/test_appimage.py` asserted
+  `(stat.st_mode & 0o777) == 0o755` after `Path.chmod(0o755)`. Windows
+  `chmod` is a near-noop for POSIX bits; the AppImage feature is
+  Linux-only anyway. Gated the assertion behind `sys.platform !=
+  "win32"`.
+
+### Notes
+
+- 88 unit tests pass (was 52 in 1.0.0; +36 new across `clean_user_text`,
+  `kpi_tile_autofit`, `appimage`, `version_gate`, `launcher`).
+- Ruff clean across `src/` and `tests/`.
+- Live Phase 1 still 132 / 134 on Linux + Scribus 1.6.3 (unchanged from
+  1.0.0).
+
+[1.0.1]: https://github.com/caewa/scribus-mcp/releases/tag/v1.0.1
+
 ## [1.0.0] — 2026-05-04
 
 First public PyPI release. The MCP server has been driving Scribus end-to-end
