@@ -49,6 +49,20 @@ Issues = "https://github.com/caewa/scribus-mcp/issues"
 include = [
     "src/scribus_mcp/**/*.py",
     "src/scribus_mcp/**/*.spy",
+    "doc/BEST_PRACTICES.md",
+]
+
+[tool.hatch.build.targets.sdist]
+# Make sure the source distribution carries the file the wheel
+# force-include below depends on. Without this, ``uv build`` first
+# rolls a sdist that omits ``doc/`` and the subsequent wheel build
+# (which runs *inside* the sdist) errors out on the missing file.
+include = [
+    "src/scribus_mcp/**/*.py",
+    "src/scribus_mcp/**/*.spy",
+    "doc/BEST_PRACTICES.md",
+    "LICENSE",
+    "README.md",
 ]
 
 [tool.hatch.build.targets.wheel]
