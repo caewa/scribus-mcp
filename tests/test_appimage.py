@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -58,8 +59,12 @@ def test_fetch_writes_target_and_chmods_executable(tmp_path: Path):
         )
     assert path.exists()
     assert path.stat().st_size == len(body)
-    # 0o755 — owner rwx, group rx, other rx
-    assert (path.stat().st_mode & 0o777) == 0o755
+    # Mode bits are POSIX-only — Windows ``chmod`` is a near-noop and
+    # ``st_mode``'s low 9 bits don't carry executable info there. The
+    # AppImage feature is Linux-only anyway; the rest of this test
+    # (URL handling, size, write integrity) still applies cross-platform.
+    if sys.platform != "win32":
+        assert (path.stat().st_mode & 0o777) == 0o755
 
 
 def test_fetch_is_idempotent_when_target_present(tmp_path: Path):
