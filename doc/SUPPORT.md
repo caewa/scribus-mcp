@@ -105,12 +105,12 @@ The resulting `api.txt` is the ground truth for your Scribus build.
 | `moveObjectAbs` | **Yes** | Move to absolute coordinates. | `move_object(absolute=True)`. Also used internally by `create_numbered_badge` to recenter outlined glyphs. |
 | `sizeObject` | **Yes** | Resize an object. | `resize_object`. |
 | `rotateObject` / `rotateObjectAbs` | **Yes** | Rotate by delta / to absolute angle. | `rotate_object(absolute=False/True)`. |
-| `scaleGroup` | **No** | Scale a group proportionally. | Not yet. |
+| `scaleGroup` | **Yes** | Scale a group proportionally. | `scale_group(name, factor)`. |
 | `getPosition` | **Yes** | (x, y) of object in mm. | `get_object_position` (forces mm before reading). |
 | `getSize` | **Yes** | (w, h) of object in mm. | `get_object_size` (forces mm before reading). |
 | `traceText` / `outlineText` | **Yes** | Convert text frame to vector outlines. | `outline_text` (returns the names of generated polygons). |
-| `lockObject` / `isLocked` | **No** | Lock/unlock for editing. | Not yet. |
-| `getName` / `renameObject` | **No** | Read/write object name. | Names are returned at creation time. |
+| `lockObject` / `isLocked` | **Yes** | Lock/unlock for editing. | `set_object_locked(name, locked)` (idempotent — reads first, toggles only if needed) and `is_object_locked`. |
+| `getName` / `renameObject` | **Yes** | Read/write object name. | `get_object_name` / `rename_object` (returns disambiguated name). |
 | `getProperty` / `setProperty` / `getPropertyCType` / `getPropertyType` | **Partial** | Generic Qt property reflection. | Used by the `find_objects` search path. Powerful but rarely needed directly. |
 | `itemNumberFromName` | **No** | Resolve name to internal index. | Not relevant — we never expose internal indices. |
 

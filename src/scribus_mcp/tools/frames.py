@@ -91,6 +91,86 @@ def register(mcp, ctx: ServerCtx) -> None:
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
+    async def scale_group(name: str, factor: float, mode: Mode = "auto") -> dict:
+        """Scale a group proportionally by ``factor`` (1.0 = no change).
+
+        ``name`` must refer to an object that is part of a group; Scribus
+        scales the entire group around its origin.
+        """
+        if factor <= 0:
+            return {"ok": False, "error": "factor must be > 0"}
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("scaleGroup", factor, name)
+        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def is_object_locked(name: str, mode: Mode = "auto") -> dict:
+        """Return ``{locked: bool}`` for the named object."""
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("isLocked", name)
+        return {
+            "ok": result.ok,
+            "locked": bool(result.unwrap_or()),
+            "error": result.error,
+        }
+
+    @mcp.tool()
+    async def set_object_locked(name: str, locked: bool, mode: Mode = "auto") -> dict:
+        """Set whether the named object is locked for editing.
+
+        Scribus's ``lockObject`` is a toggle, not a setter — this wrapper
+        reads the current state via ``isLocked`` and only flips it if
+        the desired value differs, so the call is idempotent.
+        """
+        backend = await get_backend(ctx, mode)
+        body = (
+            "import scribus as _s\n"
+            f"_n = {name!r}\n"
+            f"_target = {bool(locked)!r}\n"
+            "_current = bool(_s.isLocked(_n))\n"
+            "if _current != _target:\n"
+            "    _s.lockObject(_n)\n"
+            "_value = bool(_s.isLocked(_n))\n"
+        )
+        result = await backend.script(body, result_expr="_value")
+        return {
+            "ok": result.ok,
+            "locked": bool(result.unwrap_or()),
+            "error": result.error,
+        }
+
+    @mcp.tool()
+    async def get_object_name(name: str, mode: Mode = "auto") -> dict:
+        """Return ``{name}`` — the object's actual ``itemName``.
+
+        Usually equal to the input ``name``, but may differ if Scribus
+        disambiguated a duplicate at creation time. Useful as a sanity
+        check after ``rename_object``.
+        """
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("getName", name)
+        return {
+            "ok": result.ok,
+            "name": result.unwrap_or() or "",
+            "error": result.error,
+        }
+
+    @mcp.tool()
+    async def rename_object(old_name: str, new_name: str, mode: Mode = "auto") -> dict:
+        """Rename an object. Returns ``{name}`` of the new (possibly disambiguated) name.
+
+        Scribus appends a suffix if ``new_name`` collides with an
+        existing object, so the returned name is authoritative.
+        """
+        backend = await get_backend(ctx, mode)
+        result = await backend.call("renameObject", old_name, new_name)
+        return {
+            "ok": result.ok,
+            "name": result.unwrap_or() or "",
+            "error": result.error,
+        }
+
+    @mcp.tool()
     async def get_object_position(name: str, mode: Mode = "auto") -> dict:
         """Return ``{x_mm, y_mm}`` of the object's top-left corner.
 
