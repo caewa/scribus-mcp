@@ -8,7 +8,7 @@ manually-composed TOC: pass it the entries + page numbers and it lays out
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -52,6 +52,7 @@ def register(mcp, ctx: ServerCtx) -> None:
                 return {"ok": False, "error": f"entry {i} needs 'title' and 'page'"}
 
         backend = await get_backend(ctx, mode)
+        title = clean_user_text(title)
         cur_y = y_mm
         title_name: str | None = None
         entry_names: list[dict] = []
@@ -83,7 +84,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             tn = None
             if tr.ok:
                 tn = tr.value
-                await backend.call("setText", str(e["title"]), tn)
+                await backend.call("setText", clean_user_text(str(e["title"])), tn)
                 await backend.call("setFontSize", float(entry_font_size_pt), tn)
                 await backend.call("setTextColor", entry_color, tn)
 

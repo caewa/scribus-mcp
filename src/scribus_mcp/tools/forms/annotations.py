@@ -12,7 +12,7 @@ existing frame; ``mode="create"`` creates the frame first.
 from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode as _BackendMode
-from scribus_mcp.tools._common import ServerCtx, get_backend
+from scribus_mcp.tools._common import ServerCtx, clean_user_text, get_backend
 
 # Sticky-note icon codes per setTextAnnotation
 TEXT_ANNOTATION_ICONS = {
@@ -74,7 +74,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             return f
         name = f["name"]
         if f.get("created") and link_text:
-            await backend.call("setText", link_text, name)
+            await backend.call("setText", clean_user_text(link_text), name)
         # setLinkAnnotation requires all numeric args as int.
         r = await backend.call(
             "setLinkAnnotation",
@@ -112,7 +112,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             return f
         name = f["name"]
         if f.get("created") and link_text:
-            await backend.call("setText", link_text, name)
+            await backend.call("setText", clean_user_text(link_text), name)
         r = await backend.call("setURIAnnotation", uri, name)
         return {
             "ok": r.ok,
@@ -153,7 +153,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             return f
         name = f["name"]
         if f.get("created") and link_text:
-            await backend.call("setText", link_text, name)
+            await backend.call("setText", clean_user_text(link_text), name)
         # setFileAnnotation(path, page, x, y, [name], [absolute=True])
         r = await backend.call(
             "setFileAnnotation",
@@ -197,7 +197,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             return f
         name = f["name"]
         if f.get("created"):
-            await backend.call("setText", text, name)
+            await backend.call("setText", clean_user_text(text), name)
         r = await backend.call(
             "setTextAnnotation", TEXT_ANNOTATION_ICONS[icon], bool(is_open), name
         )

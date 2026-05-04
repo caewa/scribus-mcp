@@ -16,7 +16,7 @@ unusable.
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
 from scribus_mcp.tools.patterns._styling import HAIRLINE_PT
 
@@ -256,6 +256,17 @@ def register(mcp, ctx: ServerCtx) -> None:
                         str(ds.get("label", "")),
                     )
                 )
+
+        # Decode any HTML entities the LLM may have pre-encoded in labels.
+        value_labels_spec = [
+            (x, y, w, h, clean_user_text(t)) for x, y, w, h, t in value_labels_spec
+        ]
+        cat_labels_spec = [
+            (x, y, w, h, clean_user_text(t)) for x, y, w, h, t in cat_labels_spec
+        ]
+        legend_texts_spec = [
+            (x, y, w, h, clean_user_text(t)) for x, y, w, h, t in legend_texts_spec
+        ]
 
         # ---- One script body that creates everything --------------------
         body = f"""

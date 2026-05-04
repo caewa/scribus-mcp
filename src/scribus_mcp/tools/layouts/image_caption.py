@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -44,6 +44,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             return {"ok": False, "error": "height_mm too small for caption + gap"}
 
         backend = await get_backend(ctx, mode)
+        caption = clean_user_text(caption)
         img_h = height_mm - caption_height_mm - caption_gap_mm
 
         # Image frame

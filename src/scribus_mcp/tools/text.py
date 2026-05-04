@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 
 ALIGN = {"left": 0, "center": 1, "right": 2, "justify": 3, "forced": 4}
 
@@ -19,17 +19,23 @@ FIRST_LINE_OFFSET = {
 def register(mcp, ctx: ServerCtx) -> None:
     @mcp.tool()
     async def set_text(name: str, text: str, mode: Mode = "auto") -> dict:
-        """Replace the text content of a text frame."""
+        """Replace the text content of a text frame.
+
+        HTML/XML entities in ``text`` (``&amp;``, ``&lt;``, etc.) are
+        decoded before passing to Scribus — see ``clean_user_text`` for
+        the rationale.
+        """
         backend = await get_backend(ctx, mode)
-        result = await backend.call("setText", text, name)
+        result = await backend.call("setText", clean_user_text(text), name)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
     async def append_text(name: str, text: str, mode: Mode = "auto") -> dict:
         """Append text to the end of a text frame."""
         backend = await get_backend(ctx, mode)
+        cleaned = clean_user_text(text)
         result = await backend.script(
-            f"_value = scribus.insertText({text!r}, -1, {name!r})",
+            f"_value = scribus.insertText({cleaned!r}, -1, {name!r})",
             result_expr="_value",
         )
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}

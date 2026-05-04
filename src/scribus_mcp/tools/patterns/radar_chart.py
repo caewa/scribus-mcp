@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import math
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.patterns._styling import THIN_PT
 
 
@@ -257,6 +257,14 @@ def register(mcp, ctx: ServerCtx) -> None:
                         str(ds.get("label", "")),
                     )
                 )
+
+        # Decode any HTML entities the LLM may have pre-encoded in labels.
+        labels_spec = [
+            (x, y, w, h, clean_user_text(t)) for x, y, w, h, t in labels_spec
+        ]
+        legend_texts_spec = [
+            (x, y, w, h, clean_user_text(t)) for x, y, w, h, t in legend_texts_spec
+        ]
 
         # ---- One script body that creates everything --------------------
         body = f"""

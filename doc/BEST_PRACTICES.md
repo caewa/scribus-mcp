@@ -143,6 +143,20 @@ the link jumps to) and `frame_x_mm` / `frame_y_mm` / `frame_width_mm` /
 `frame_height_mm` (where the clickable rectangle sits on the *current*
 page).
 
+## Pass plain text — never HTML-escape
+
+Scribus's `setText` takes raw strings. If you pre-encode `&` as `&amp;` (or `<` as `&lt;`, etc.) the way you would for HTML, the encoded form ends up rendered literally in the PDF — Scribus stores user content as XML in the SLA file and re-escapes on save, so a pre-encoded `&amp;` becomes `&amp;amp;` on disk and renders as the five characters `&amp;`.
+
+The MCP defends against this by running `html.unescape` on user-text inputs at the boundary (see `clean_user_text` in `src/scribus_mcp/tools/_common.py`), but you should still pass plain text:
+
+| Don't | Do |
+|---|---|
+| `"R&amp;D"` | `"R&D"` |
+| `"AT&amp;T merger"` | `"AT&T merger"` |
+| `"foo &lt;bar&gt;"` | `"foo <bar>"` |
+
+This applies to every tool that accepts user-visible text — `set_text`, `append_text`, `import_markdown`, every pattern's `title` / `caption` / `label` / `body`, every layout's `title` / `eyebrow` / `subtitle` / `right_text`, form `default_value` / `label`, annotation `link_text`, etc. The one exception is `create_code_sample`'s code body — code may legitimately contain literal `&amp;` and is passed through verbatim.
+
 ## Version-gated tools
 
 A small number of tools wrap Scripter calls that only exist on Scribus 1.7+. If you call one on 1.6 you get a structured `ok=false` payload like:

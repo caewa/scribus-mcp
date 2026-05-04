@@ -7,7 +7,7 @@ primitive calls a hand-rolled step list takes.
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_row_bboxes
 
 
@@ -139,7 +139,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             title_name = None
             if tr.ok:
                 title_name = tr.value
-                await backend.call("setText", str(it["title"]), title_name)
+                await backend.call("setText", clean_user_text(str(it["title"])), title_name)
                 await backend.call("setFontSize", float(title_font_size_pt), title_name)
                 await backend.call("setTextColor", title_color, title_name)
 
@@ -156,7 +156,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             body_name = None
             if br.ok:
                 body_name = br.value
-                await backend.call("setText", str(it["body"]), body_name)
+                await backend.call("setText", clean_user_text(str(it["body"])), body_name)
                 await backend.call("setFontSize", float(body_text_font_size_pt), body_name)
                 await backend.call("setTextColor", body_text_color, body_name)
 

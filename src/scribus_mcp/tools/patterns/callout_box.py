@@ -5,7 +5,7 @@ Single-script-body design.
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -35,6 +35,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         body_y = y_mm + padding_mm + title_height_mm + 1
         body_h = height_mm - (padding_mm * 2) - title_height_mm - 1
         text_w = width_mm - 2 * padding_mm
+        title = clean_user_text(title)
+        body = clean_user_text(body)
 
         script = f"""
 import scribus as _s

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 from dataclasses import dataclass
 from typing import Literal
 
@@ -8,6 +9,34 @@ from scribus_mcp.backends.base import BackendError, ScribusBackend
 from scribus_mcp.config import Config
 
 Mode = Literal["auto", "headless", "interactive"]
+
+
+def clean_user_text(s: str) -> str:
+    """Decode HTML/XML entities in user-supplied text before it hits Scribus.
+
+    LLM clients sometimes "helpfully" pre-encode `&` as `&amp;`,
+    `<` as `&lt;`, etc. — pattern-matching on training data where text
+    was destined for HTML. Scribus's ``setText`` takes raw strings;
+    Scribus then writes the SLA (an XML format) and re-escapes ``&``
+    to ``&amp;`` itself, so the LLM's pre-encode produces ``&amp;amp;``
+    on disk, which renders as the literal characters ``&amp;`` in the
+    PDF. Defensive single-pass unescape at the MCP boundary undoes the
+    LLM's mistake without touching anything that wasn't already
+    encoded.
+
+    ``html.unescape`` handles named entities (``&amp;``, ``&lt;``,
+    ``&gt;``, ``&quot;``, ``&apos;``, case-insensitive), numeric
+    entities (``&#x26;``, ``&#38;``), and is a single pass — so an
+    intentional ``&amp;amp;`` becomes ``&amp;`` (one level of escape
+    survives, as the LLM presumably intended one to render as
+    literal text). Bare ``&`` is left alone.
+
+    Skip this for content that legitimately contains literal entity
+    references — e.g., source code passed to ``create_code_sample``.
+    """
+    if not s:
+        return s
+    return html.unescape(s)
 
 
 @dataclass
@@ -99,6 +128,7 @@ __all__ = [
     "BackendError",
     "Mode",
     "ServerCtx",
+    "clean_user_text",
     "get_backend",
     "get_scribus_version",
     "require_min_scribus_version",

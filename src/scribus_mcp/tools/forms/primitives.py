@@ -18,7 +18,7 @@ fields an initial value.
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 
 # Field-type codes per createPdfAnnotation docs
 PDF_BUTTON = 0
@@ -66,7 +66,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         if not r.get("ok") or not r.get("name"):
             return r
         if default_value:
-            await backend.call("setText", default_value, r["name"])
+            await backend.call("setText", clean_user_text(default_value), r["name"])
         return r
 
     @mcp.tool()
@@ -179,7 +179,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         if not r.get("ok") or not r.get("name"):
             return r
         if label:
-            lbl_res = await backend.call("setText", label, r["name"])
+            lbl_res = await backend.call("setText", clean_user_text(label), r["name"])
             r["label_applied"] = bool(lbl_res.ok)
             if not lbl_res.ok:
                 r["label_error"] = lbl_res.error

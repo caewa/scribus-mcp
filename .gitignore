@@ -79,3 +79,7 @@ demo-*.pdf
 # Rendered page previews — regenerated locally by demo scripts and
 # `render_page_to_image`. Kept out of the repo to avoid binary churn.
 *.png
+
+# Claude Code session state
+.claude/
+

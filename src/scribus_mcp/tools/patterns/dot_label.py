@@ -7,7 +7,7 @@ look (the kind seen in numbered "Getting Started" lists).
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -59,7 +59,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         body_parts.extend(
             [
                 f"_text = _s.createText({rect_x}, {rect_y}, {diameter_mm}, {diameter_mm})",
-                f"_s.setText({str(text)!r}, _text)",
+                f"_s.setText({clean_user_text(str(text))!r}, _text)",
                 f"_s.setFontSize({float(text_font_size_pt)}, _text)",
                 f"_s.setTextColor({text_color!r}, _text)",
                 "_s.setTextAlignment(1, _text)",

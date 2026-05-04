@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -33,6 +33,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         a new visual hierarchy each time.
         """
         backend = await get_backend(ctx, mode)
+        title = clean_user_text(title)
+        eyebrow = clean_user_text(eyebrow)
         eyebrow_name: str | None = None
         rule_name: str | None = None
         cur_y = y_mm

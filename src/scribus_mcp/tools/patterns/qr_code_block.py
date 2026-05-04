@@ -5,6 +5,7 @@ from __future__ import annotations
 from scribus_mcp.tools._common import (
     Mode,
     ServerCtx,
+    clean_user_text,
     get_backend,
     require_min_scribus_version,
 )
@@ -48,6 +49,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             return gate
 
         cap_h = max(4.0, caption_font_size_pt * 0.5 + 1.5)
+        caption = clean_user_text(caption)
         body = f"""
 import scribus as _s
 

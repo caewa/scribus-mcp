@@ -8,7 +8,7 @@ concatenate many fragments and dispatch a whole row in one round-trip.
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 
 
 def render_kpi_tile_script(
@@ -71,6 +71,9 @@ def render_kpi_tile_script(
         actual_value_font = max(6.0, val_band_h / 0.7)
 
     text_w = width_mm - 2 * pad_x
+    value = clean_user_text(str(value))
+    label = clean_user_text(label)
+    delta = clean_user_text(delta)
     label_text = label.upper()
 
     fragment_parts = [

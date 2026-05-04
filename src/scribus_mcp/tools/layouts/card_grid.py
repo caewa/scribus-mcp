@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_grid_bboxes
 
 _ALIGN = {"left": 0, "center": 1, "right": 2, "justify": 3, "forced": 4}
@@ -44,6 +44,9 @@ async def _render_card(
     padding_mm: float,
 ) -> dict:
     """Render a single card. Returns the names of every piece."""
+    title = clean_user_text(title)
+    body = clean_user_text(body)
+    eyebrow = clean_user_text(eyebrow)
     cx, cy = bbox["x_mm"], bbox["y_mm"]
     cw, ch = bbox["width_mm"], bbox["height_mm"]
 

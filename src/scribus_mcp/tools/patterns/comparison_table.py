@@ -7,7 +7,7 @@ cell, and the divider line is computed Python-side and emitted as one
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
 from scribus_mcp.tools.patterns._styling import THIN_PT
 
@@ -62,7 +62,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         col_x = x_mm
         for i, h in enumerate(headers):
             headers_spec.append(
-                (col_x, y_mm, column_widths[i], float(header_height_mm), str(h))
+                (col_x, y_mm, column_widths[i], float(header_height_mm), clean_user_text(str(h)))
             )
             col_x += column_widths[i]
 
@@ -85,7 +85,7 @@ def register(mcp, ctx: ServerCtx) -> None:
                         row_y,
                         column_widths[i],
                         float(row_height_mm - 1),
-                        str(cell_text),
+                        clean_user_text(str(cell_text)),
                     )
                 )
                 col_x += column_widths[i]

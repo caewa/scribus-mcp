@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -57,6 +57,11 @@ def register(mcp, ctx: ServerCtx) -> None:
         title_name: str | None = None
         subtitle_name: str | None = None
         right_name: str | None = None
+
+        title = clean_user_text(title)
+        eyebrow = clean_user_text(eyebrow)
+        subtitle = clean_user_text(subtitle)
+        right_text = clean_user_text(right_text)
 
         cur_y = y_mm + padding_y_mm
         text_w = width_mm - 2 * padding_x_mm
