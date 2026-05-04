@@ -157,6 +157,8 @@ The MCP defends against this by running `html.unescape` on user-text inputs at t
 
 This applies to every tool that accepts user-visible text — `set_text`, `append_text`, `import_markdown`, every pattern's `title` / `caption` / `label` / `body`, every layout's `title` / `eyebrow` / `subtitle` / `right_text`, form `default_value` / `label`, annotation `link_text`, etc. The one exception is `create_code_sample`'s code body — code may legitimately contain literal `&amp;` and is passed through verbatim.
 
+**Typographic entities are preserved.** `&nbsp;` decodes to U+00A0 (a real non-breaking space, *not* a regular space) — Scribus respects it at line-break time, so use it intentionally to keep words glued together: `"Apache&nbsp;2.0"` won't wrap between "Apache" and "2.0". Same goes for `&mdash;` (—), `&ndash;` (–), `&hellip;` (…), `&copy;` (©), etc. — they're decoded to the actual Unicode character, not stripped.
+
 ## Version-gated tools
 
 A small number of tools wrap Scripter calls that only exist on Scribus 1.7+. If you call one on 1.6 you get a structured `ok=false` payload like:

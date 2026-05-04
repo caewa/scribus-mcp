@@ -66,15 +66,28 @@ def render_kpi_tile_script(
     val_band_bottom = y_mm + height_mm - pad_bottom - delta_band
     val_band_h = max(6.5, val_band_bottom - val_band_top)
 
-    actual_value_font = float(value_font_size_pt)
-    if _mm_for(actual_value_font) > val_band_h:
-        actual_value_font = max(6.0, val_band_h / 0.7)
-
     text_w = width_mm - 2 * pad_x
     value = clean_user_text(str(value))
     label = clean_user_text(label)
     delta = clean_user_text(delta)
     label_text = label.upper()
+
+    # Auto-shrink the value font so it fits the tile in BOTH dimensions.
+    # Vertical: ``_mm_for(F) ≈ F * 0.7`` is a rule-of-thumb mm-per-pt for
+    # line height including leading; max_v_font is the pt size that
+    # fills ``val_band_h`` mm.
+    # Horizontal: average char width for proportional sans serif is
+    # roughly ``0.55 * F`` pt; max_h_font is the pt size at which
+    # ``len(value)`` chars span the inner width. Without this, a long
+    # value like "Apache 2.0" at 22 pt would wrap onto two lines in a
+    # tile that's only ~33 mm wide.
+    max_v_font = val_band_h / 0.7
+    char_w_factor = 0.55
+    char_count = max(1, len(value))
+    max_h_font_pt = (text_w * 2.834645669) / (char_count * char_w_factor)
+    actual_value_font = max(
+        6.0, min(float(value_font_size_pt), max_v_font, max_h_font_pt)
+    )
 
     fragment_parts = [
         f"_{var_prefix}_bg = _s.createRect({x_mm}, {y_mm}, {width_mm}, {height_mm})",
