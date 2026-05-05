@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] — 2026-05-05
+
+Bug-fix: 1.1.2's AppImage wiring works (Scribus 1.7.3 actually
+launches), but two follow-ups surfaced once a 1.7.x window was on
+screen — the window painted black on Wayland and `get_scribus_version`
+still reported 0.0.0.
+
+### Fixed
+
+- **Black AppImage window on Wayland.** The 1.7.3 AppImage's bundled
+  Qt doesn't handle Wayland cleanly — the main window came up but
+  rendered all-black. The launcher now sets `QT_QPA_PLATFORM=xcb` in
+  the spawn env (via `setdefault`, so a user-set value still wins) so
+  Qt picks the X11 backend it actually works under.
+- **`-cl` flag dropped from the bridge spawn cmd.** Scribus 1.7.3's
+  `--help` doesn't list `-cl` — the launcher was emitting it for 1.7+
+  thinking it was a "console-only" feature flag, but it's silently
+  ignored on every 1.7.x build we've tested. The matching test pins
+  the new "never emit" behaviour.
+- **`get_scribus_version` returned 0.0.0 against 1.7.3.** The probe
+  read `scribus.scribus_version_info`, which the 1.7.3 AppImage
+  doesn't expose as a top-level attribute. Added a fallback that
+  splits the dotted string in `scribus.scribus_version` ("1.7.3" →
+  `(1, 7, 3)`).
+
+### Notes
+
+- 119 unit tests pass (was 116; +3 covering the dropped flag, the
+  Linux env tweak, and the user-override-wins behaviour).
+
+[1.1.3]: https://github.com/caewa/scribus-mcp/releases/tag/v1.1.3
+
 ## [1.1.2] — 2026-05-05
 
 Bug-fix: 1.1.1 wired `SCRIBUS_MCP_IGNORE_HOST_SCRIBUS` into the bridge

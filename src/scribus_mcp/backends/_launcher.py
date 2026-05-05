@@ -195,14 +195,13 @@ async def ensure_bridge_running(
             f"{spy} (or close that Scribus instance and retry to auto-launch)."
         )
 
-    # ``-cl`` (console-only) is a Scribus 1.7+ flag; on 1.6 it's parsed as
-    # a filename to open, which silently breaks ``-py`` execution. Probe
-    # the binary and only emit the flag when we know it's supported.
-    cmd = [str(scribus_bin), "-ns"]
+    # Scribus 1.7.3 (the AppImage we auto-fetch) doesn't list ``-cl`` in
+    # its --help output — it's silently ignored. Earlier versions of this
+    # launcher emitted it for 1.7+ thinking it was a "console-only" flag,
+    # but it isn't documented in any 1.7.x build we've tested. Just use
+    # ``-ns -py <spy>`` for both 1.6 and 1.7.
     version = _detect_scribus_version(str(scribus_bin))
-    if version is not None and version >= (1, 7):
-        cmd.append("-cl")
-    cmd += ["-py", str(spy)]
+    cmd = [str(scribus_bin), "-ns", "-py", str(spy)]
     log.info("Auto-launching Scribus %s + bridge: %s", version, cmd)
 
     try:
@@ -217,6 +216,16 @@ async def ensure_bridge_running(
             )
         else:
             kwargs["start_new_session"] = True
+            # Force the X11 Qt backend on Linux so the AppImage's bundled
+            # Qt doesn't render a black window on Wayland sessions.
+            # ``QT_QPA_PLATFORM=xcb`` is the well-known workaround for
+            # AppImage rendering issues; we set it via the spawn env so
+            # the user's shell config isn't touched.
+            import os as _os
+
+            spawn_env = _os.environ.copy()
+            spawn_env.setdefault("QT_QPA_PLATFORM", "xcb")
+            kwargs["env"] = spawn_env
         subprocess.Popen(cmd, **kwargs)
     except (OSError, FileNotFoundError) as exc:
         return False, f"failed to spawn Scribus: {exc}"

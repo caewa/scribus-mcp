@@ -73,9 +73,30 @@ async def get_scribus_version(backend: ScribusBackend) -> tuple[int, int, int]:
     cached = _VERSION_CACHE.get(key)
     if cached is not None:
         return cached
+    # Scribus's Scripter exposes the version as ``SCRIBUS_VERSION_INFO``
+    # (a sys.version_info-shaped tuple ``(major, minor, patch, suffix, 0)``)
+    # and ``SCRIBUS_VERSION`` (a dotted string like ``"1.7.3"``). Both
+    # names are upper-case in scriptplugin.cpp — earlier versions of
+    # this probe used lower-case ``scribus_version_info``, which doesn't
+    # exist, so the probe always reported ``(0, 0, 0)``. Try the tuple
+    # first (cheap to parse, no string-to-int gymnastics); fall back to
+    # splitting the dotted string for any future build that drops the
+    # tuple.
     body = (
         "import scribus as _s\n"
-        "_value = list(getattr(_s, 'scribus_version_info', (0, 0, 0))[:3])\n"
+        "_v = getattr(_s, 'SCRIBUS_VERSION_INFO', None)\n"
+        "if not (isinstance(_v, tuple) and len(_v) >= 3):\n"
+        "    _vs = getattr(_s, 'SCRIBUS_VERSION', '') or ''\n"
+        "    _parts = []\n"
+        "    for _p in str(_vs).split('.')[:3]:\n"
+        "        try:\n"
+        "            _parts.append(int(''.join(c for c in _p if c.isdigit())))\n"
+        "        except Exception:\n"
+        "            break\n"
+        "    while len(_parts) < 3:\n"
+        "        _parts.append(0)\n"
+        "    _v = tuple(_parts)\n"
+        "_value = [int(_v[0]), int(_v[1]), int(_v[2])]\n"
     )
     try:
         res = await backend.script(body, result_expr="_value")

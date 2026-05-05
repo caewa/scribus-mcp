@@ -7,6 +7,7 @@ poll loop in a controlled way.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
@@ -99,7 +100,12 @@ async def test_spawn_then_polls_and_succeeds(tmp_path):
     assert reason is None
     popen.assert_called_once()
     args = popen.call_args.args[0]
-    assert "-cl" in args  # 1.7+ → console-only flag emitted
+    # The launcher used to emit ``-cl`` for 1.7+ thinking it was a
+    # "console-only" flag, but 1.7.3 doesn't list it in --help (silently
+    # ignored). Pin that we no longer emit it.
+    assert "-cl" not in args
+    assert "-ns" in args
+    assert "-py" in args
 
 
 @pytest.mark.asyncio
@@ -199,6 +205,101 @@ async def test_spawn_omits_cl_flag_on_scribus_16(tmp_path):
     assert "-cl" not in args
     assert "-py" in args
     assert "-ns" in args
+
+
+@pytest.mark.asyncio
+async def test_spawn_omits_cl_flag_on_scribus_17(tmp_path):
+    """Regression: 1.7.3 doesn't list ``-cl`` in --help — it was being
+    silently ignored. The launcher must no longer emit it for 1.7+."""
+    cfg = _cfg(tmp_path)
+    inter = InteractiveBackend(cfg)
+
+    with (
+        patch.object(inter, "is_available", return_value=False),
+        patch("subprocess.Popen") as popen,
+        patch("scribus_mcp.backends._launcher.bridge_path") as bp,
+        patch("scribus_mcp.backends._launcher._scribus_already_running", return_value=False),
+        patch(
+            "scribus_mcp.backends._launcher._detect_scribus_version",
+            return_value=(1, 7),
+        ),
+    ):
+        spy = tmp_path / "fake.spy"
+        spy.write_text("# noop")
+        bp.return_value = spy
+        fake_bin = tmp_path / "scribus"
+        fake_bin.write_text("")
+        cfg2 = replace(cfg, scribus_bin=str(fake_bin))
+        await ensure_bridge_running(cfg2, inter, timeout_s=0.2, poll_interval_s=0.1)
+
+    args = popen.call_args.args[0]
+    assert "-cl" not in args
+
+
+@pytest.mark.asyncio
+async def test_spawn_sets_qt_qpa_platform_xcb_on_linux(tmp_path):
+    """The AppImage's bundled Qt renders a black window under Wayland;
+    forcing ``QT_QPA_PLATFORM=xcb`` via the spawn env is the well-known
+    workaround. Pin that the launcher sets it on Linux."""
+    if sys.platform == "win32":
+        pytest.skip("env tweak is Linux-only")
+    cfg = _cfg(tmp_path)
+    inter = InteractiveBackend(cfg)
+
+    with (
+        patch.object(inter, "is_available", return_value=False),
+        patch("subprocess.Popen") as popen,
+        patch("scribus_mcp.backends._launcher.bridge_path") as bp,
+        patch("scribus_mcp.backends._launcher._scribus_already_running", return_value=False),
+        patch(
+            "scribus_mcp.backends._launcher._detect_scribus_version",
+            return_value=(1, 7),
+        ),
+    ):
+        spy = tmp_path / "fake.spy"
+        spy.write_text("# noop")
+        bp.return_value = spy
+        fake_bin = tmp_path / "scribus"
+        fake_bin.write_text("")
+        cfg2 = replace(cfg, scribus_bin=str(fake_bin))
+        await ensure_bridge_running(cfg2, inter, timeout_s=0.2, poll_interval_s=0.1)
+
+    env = popen.call_args.kwargs.get("env", {})
+    assert env.get("QT_QPA_PLATFORM") == "xcb"
+
+
+@pytest.mark.asyncio
+async def test_spawn_qt_platform_respects_user_override(tmp_path):
+    """If the user has already set QT_QPA_PLATFORM, the launcher must
+    not stomp on their preference (``setdefault``, not ``=``)."""
+    if sys.platform == "win32":
+        pytest.skip("env tweak is Linux-only")
+    cfg = _cfg(tmp_path)
+    inter = InteractiveBackend(cfg)
+
+    import os as _os
+
+    with (
+        patch.object(inter, "is_available", return_value=False),
+        patch("subprocess.Popen") as popen,
+        patch("scribus_mcp.backends._launcher.bridge_path") as bp,
+        patch("scribus_mcp.backends._launcher._scribus_already_running", return_value=False),
+        patch(
+            "scribus_mcp.backends._launcher._detect_scribus_version",
+            return_value=(1, 7),
+        ),
+        patch.dict(_os.environ, {"QT_QPA_PLATFORM": "wayland"}),
+    ):
+        spy = tmp_path / "fake.spy"
+        spy.write_text("# noop")
+        bp.return_value = spy
+        fake_bin = tmp_path / "scribus"
+        fake_bin.write_text("")
+        cfg2 = replace(cfg, scribus_bin=str(fake_bin))
+        await ensure_bridge_running(cfg2, inter, timeout_s=0.2, poll_interval_s=0.1)
+
+    env = popen.call_args.kwargs.get("env", {})
+    assert env.get("QT_QPA_PLATFORM") == "wayland"  # user wins
 
 
 @pytest.mark.asyncio

@@ -132,8 +132,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         tuple as a list; ``version_string`` is the dotted form ``"1.7.3"``.
         ``is_17_or_newer`` is the convenience flag for feature gating.
         Reports ``major=0`` and ``version_string=""`` if the probe failed
-        (bridge unreachable, ``scribus_version_info`` missing) — treat
-        that as "unknown" / "fail closed".
+        (bridge unreachable, no ``SCRIBUS_VERSION_INFO`` attribute on
+        this Scribus build) — treat that as "unknown" / "fail closed".
         """
         backend = await get_backend(ctx, mode)
         version = await probe_scribus_version(backend)

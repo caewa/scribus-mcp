@@ -55,7 +55,7 @@ async def test_get_scribus_version_returns_tuple_from_probe():
     backend = FakeBackend(response=_ok([1, 7, 3]), calls=[])
     assert await get_scribus_version(backend) == (1, 7, 3)
     assert len(backend.calls) == 1
-    assert "scribus_version_info" in backend.calls[0]
+    assert "SCRIBUS_VERSION_INFO" in backend.calls[0]
 
 
 @pytest.mark.asyncio
