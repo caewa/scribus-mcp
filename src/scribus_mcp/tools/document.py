@@ -4,7 +4,12 @@ from typing import Annotated
 
 from pydantic import Field
 
-from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools._common import (
+    Mode,
+    ServerCtx,
+    get_backend,
+    probe_scribus_version,
+)
 from scribus_mcp.tools.palette import invalidate_palette
 
 UNIT_MM = 1  # scribus.UNIT_MILLIMETERS
@@ -115,6 +120,37 @@ def register(mcp, ctx: ServerCtx) -> None:
         )
         result = await backend.script(body, result_expr="_value")
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+
+    @mcp.tool()
+    async def get_scribus_version(mode: Mode = "auto") -> dict:
+        """Return the running Scribus's version — useful for the LLM to
+        choose between 1.6 and 1.7 codepaths (e.g. ``create_qr_code_block``
+        is 1.7+ only).
+
+        Returns ``{ok, major, minor, patch, version, version_string,
+        is_17_or_newer}``. ``version`` is the ``(major, minor, patch)``
+        tuple as a list; ``version_string`` is the dotted form ``"1.7.3"``.
+        ``is_17_or_newer`` is the convenience flag for feature gating.
+        Reports ``major=0`` and ``version_string=""`` if the probe failed
+        (bridge unreachable, ``scribus_version_info`` missing) — treat
+        that as "unknown" / "fail closed".
+        """
+        backend = await get_backend(ctx, mode)
+        version = await probe_scribus_version(backend)
+        major, minor, patch = version
+        version_string = (
+            ".".join(str(n) for n in version) if version != (0, 0, 0) else ""
+        )
+        return {
+            "ok": True,
+            "major": major,
+            "minor": minor,
+            "patch": patch,
+            "version": list(version),
+            "version_string": version_string,
+            "is_17_or_newer": version >= (1, 7, 0),
+            "error": None,
+        }
 
     @mcp.tool()
     async def has_document(mode: Mode = "auto") -> dict:

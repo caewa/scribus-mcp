@@ -120,3 +120,65 @@ async def test_require_min_at_exact_floor_passes():
         backend, feature="x", required=(1, 7, 0)
     )
     assert gate is None
+
+
+# ----- get_scribus_version MCP tool ----------------------------------------
+
+
+def _build_get_scribus_version_tool(backend):
+    """Spin up a minimal MCP harness, register document tools, return
+    the get_scribus_version callable."""
+    from scribus_mcp.tools import document as document_mod
+
+    captured: dict = {}
+
+    class _FakeMCP:
+        def tool(self):
+            def deco(fn):
+                captured[fn.__name__] = fn
+                return fn
+
+            return deco
+
+    # Tools that need a backend will pull from ctx.<something>; we patch
+    # the module-level get_backend to return our fake backend instead.
+    async def _fake_get_backend(_ctx, _mode):
+        return backend
+
+    document_mod.get_backend = _fake_get_backend
+    document_mod.register(_FakeMCP(), ctx=None)
+    return captured["get_scribus_version"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_scribus_version_returns_full_payload():
+    backend = FakeBackend(response=_ok([1, 7, 3]), calls=[])
+    tool = _build_get_scribus_version_tool(backend)
+    out = await tool(mode="auto")
+    assert out["ok"] is True
+    assert out["major"] == 1
+    assert out["minor"] == 7
+    assert out["patch"] == 3
+    assert out["version"] == [1, 7, 3]
+    assert out["version_string"] == "1.7.3"
+    assert out["is_17_or_newer"] is True
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_scribus_version_reports_unknown_on_failure():
+    backend = FakeBackend(response=_fail("bridge down"), calls=[])
+    tool = _build_get_scribus_version_tool(backend)
+    out = await tool(mode="auto")
+    assert out["ok"] is True  # tool didn't fail; probe just returned 0,0,0
+    assert out["major"] == 0
+    assert out["version_string"] == ""
+    assert out["is_17_or_newer"] is False
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_scribus_version_flags_pre_17():
+    backend = FakeBackend(response=_ok([1, 6, 3]), calls=[])
+    tool = _build_get_scribus_version_tool(backend)
+    out = await tool(mode="auto")
+    assert out["version_string"] == "1.6.3"
+    assert out["is_17_or_newer"] is False

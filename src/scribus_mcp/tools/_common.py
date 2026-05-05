@@ -131,5 +131,11 @@ __all__ = [
     "clean_user_text",
     "get_backend",
     "get_scribus_version",
+    "probe_scribus_version",
     "require_min_scribus_version",
 ]
+
+
+# Public alias so tool registrations can import the probe under a name
+# that doesn't shadow the user-facing ``get_scribus_version`` MCP tool.
+probe_scribus_version = get_scribus_version
