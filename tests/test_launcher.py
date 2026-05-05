@@ -31,6 +31,21 @@ def _cfg(tmp_path: Path) -> Config:
     )
 
 
+@pytest.fixture(autouse=True)
+def _clear_binary_cache():
+    """Drop the binary-resolver cache between tests.
+
+    Cache is keyed by ``id(config)``; different tests build different
+    Config dataclasses but Python may reuse the freed id, so without
+    this an earlier test's resolved binary leaks into a later test.
+    """
+    from scribus_mcp.backends._launcher import _invalidate_binary_cache
+
+    _invalidate_binary_cache()
+    yield
+    _invalidate_binary_cache()
+
+
 @pytest.mark.asyncio
 async def test_already_available_returns_without_spawn(tmp_path):
     cfg = _cfg(tmp_path)
@@ -348,3 +363,138 @@ def test_config_reads_ignore_host_scribus_from_env(monkeypatch):
     monkeypatch.delenv("SCRIBUS_MCP_IGNORE_HOST_SCRIBUS", raising=False)
     cfg = Config.from_env()
     assert cfg.ignore_host_scribus is False
+
+
+# ----- resolve_scribus_binary (shared by both backends) -------------------
+
+
+@pytest.mark.asyncio
+async def test_resolve_binary_skips_host_when_ignore_set(tmp_path):
+    """``ignore_host_scribus=True`` skips host lookup entirely; the
+    AppImage path returns. Regression: previously only the bridge
+    launcher honored this — the headless backend kept using the host
+    binary, so ``mode='auto'`` still saw 1.6.3 even when the user had
+    asked for the AppImage."""
+    from scribus_mcp.backends._launcher import (
+        _invalidate_binary_cache,
+        resolve_scribus_binary,
+    )
+
+    _invalidate_binary_cache()
+
+    cfg = _cfg(tmp_path)
+    host_bin = tmp_path / "scribus"
+    host_bin.write_text("")
+    appimage_bin = tmp_path / "Scribus-1.7.3-x86_64.AppImage"
+    appimage_bin.write_text("")
+
+    cfg2 = replace(
+        cfg,
+        scribus_bin=str(host_bin),
+        ignore_host_scribus=True,
+        auto_appimage=True,
+    )
+
+    with (
+        patch(
+            "scribus_mcp.backends._launcher._resolve_scribus_bin"
+        ) as resolve,
+        patch(
+            "scribus_mcp.appimage.fetch_appimage_from_env",
+            return_value=appimage_bin,
+        ),
+    ):
+        result = await resolve_scribus_binary(cfg2)
+
+    resolve.assert_not_called()
+    assert result == appimage_bin
+    _invalidate_binary_cache()
+
+
+@pytest.mark.asyncio
+async def test_resolve_binary_caches_per_config(tmp_path):
+    """Repeated calls (e.g. one per headless tool spawn) must reuse the
+    same resolved path — otherwise the AppImage gets re-downloaded on
+    every call."""
+    from scribus_mcp.backends._launcher import (
+        _invalidate_binary_cache,
+        resolve_scribus_binary,
+    )
+
+    _invalidate_binary_cache()
+
+    cfg = _cfg(tmp_path)
+    appimage_bin = tmp_path / "Scribus-1.7.3-x86_64.AppImage"
+    appimage_bin.write_text("")
+    cfg2 = replace(
+        cfg,
+        ignore_host_scribus=True,
+        auto_appimage=True,
+    )
+
+    with patch(
+        "scribus_mcp.appimage.fetch_appimage_from_env",
+        return_value=appimage_bin,
+    ) as fetch:
+        a = await resolve_scribus_binary(cfg2)
+        b = await resolve_scribus_binary(cfg2)
+        c = await resolve_scribus_binary(cfg2)
+
+    assert a == b == c == appimage_bin
+    fetch.assert_called_once()
+    _invalidate_binary_cache()
+
+
+@pytest.mark.asyncio
+async def test_headless_build_cmd_uses_resolved_binary(tmp_path):
+    """The headless backend must spawn Scribus with the AppImage path
+    when IGNORE_HOST_SCRIBUS is set, not the host binary on $PATH.
+    Regression: ``mode='auto'`` returned 1.6.3 because headless ignored
+    the env vars."""
+    from scribus_mcp.backends._launcher import _invalidate_binary_cache
+    from scribus_mcp.backends.headless import HeadlessBackend
+
+    _invalidate_binary_cache()
+
+    cfg = _cfg(tmp_path)
+    host_bin = tmp_path / "scribus"
+    host_bin.write_text("")
+    appimage_bin = tmp_path / "Scribus-1.7.3-x86_64.AppImage"
+    appimage_bin.write_text("")
+    cfg2 = replace(
+        cfg,
+        scribus_bin=str(host_bin),
+        ignore_host_scribus=True,
+        auto_appimage=True,
+    )
+
+    cfg2.workdir.mkdir(parents=True, exist_ok=True)
+    backend = HeadlessBackend(cfg2)
+
+    # Trigger one script() call. We can't actually spawn Scribus, so
+    # mock subprocess and inspect the cmd.
+    class _FakeProc:
+        returncode = 0
+
+        async def communicate(self):
+            return b"", b""
+
+    with (
+        patch(
+            "scribus_mcp.appimage.fetch_appimage_from_env",
+            return_value=appimage_bin,
+        ),
+        patch(
+            "asyncio.create_subprocess_exec",
+            return_value=_FakeProc(),
+        ) as spawn,
+    ):
+        # The script will fail to produce a result file (no real Scribus),
+        # but we only care about the cmd that was built.
+        await backend.script("_value = 1", result_expr="_value")
+
+    cmd = spawn.call_args.args
+    assert cmd[0] == str(appimage_bin), (
+        f"headless used host {host_bin} instead of AppImage {appimage_bin}"
+    )
+    _invalidate_binary_cache()

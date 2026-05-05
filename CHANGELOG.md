@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] — 2026-05-05
+
+Bug-fix: 1.1.1 wired `SCRIBUS_MCP_IGNORE_HOST_SCRIBUS` into the bridge
+launcher only — the headless backend kept using the host binary, so
+`mode="auto"` (the default) still spawned host Scribus 1.6.3 even when
+the user had asked for the AppImage. Visible symptom: calling
+`get_scribus_version` returned 1.6.3 with both `IGNORE_HOST_SCRIBUS=1`
+and `AUTO_APPIMAGE=1` set.
+
+### Fixed
+
+- **Headless backend now honours `SCRIBUS_MCP_IGNORE_HOST_SCRIBUS` /
+  `SCRIBUS_MCP_AUTO_APPIMAGE`.** Both backends now route through a
+  single `resolve_scribus_binary(config)` helper in
+  [src/scribus_mcp/backends/_launcher.py](src/scribus_mcp/backends/_launcher.py)
+  that consults the env vars and caches the resolved path per
+  `Config` instance — so the AppImage download only happens once even
+  when headless respawns Scribus per tool call.
+
+### Notes
+
+- 116 unit tests pass (was 113; +3 covering the shared resolver,
+  caching, and the headless-uses-AppImage regression).
+
+[1.1.2]: https://github.com/caewa/scribus-mcp/releases/tag/v1.1.2
+
 ## [1.1.1] — 2026-05-05
 
 Small follow-up to 1.1.0 — adds a knob the launcher was missing for

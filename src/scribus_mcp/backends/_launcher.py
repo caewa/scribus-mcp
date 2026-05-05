@@ -32,6 +32,61 @@ def _resolve_scribus_bin(scribus_bin: str) -> Path | None:
     return Path(found) if found else None
 
 
+# Per-config cache of "the Scribus binary we settled on for this run".
+# Populated lazily on first ``resolve_scribus_binary`` call so the
+# ~140 MB AppImage download only happens once per server lifetime even
+# when the headless backend respawns Scribus per tool call.
+_BINARY_CACHE: dict[int, Path] = {}
+
+
+async def resolve_scribus_binary(config: Config) -> Path | None:
+    """Pick the Scribus binary both backends should use.
+
+    Honors ``ignore_host_scribus`` (skip every host-binary lookup) and
+    ``auto_appimage`` (fetch the official AppImage when the host probe
+    didn't find anything, or when the host is being ignored).
+
+    Returns the resolved ``Path``, or ``None`` if nothing is available.
+    Result is cached per ``Config`` instance so subsequent calls — e.g.
+    repeated headless spawns — reuse the same AppImage download instead
+    of refetching.
+    """
+    cached = _BINARY_CACHE.get(id(config))
+    if cached is not None:
+        return cached
+
+    if config.ignore_host_scribus:
+        scribus_bin = None
+        log.info(
+            "SCRIBUS_MCP_IGNORE_HOST_SCRIBUS=1 — skipping host binary lookup."
+        )
+    else:
+        scribus_bin = _resolve_scribus_bin(config.scribus_bin)
+
+    if scribus_bin is None and config.auto_appimage:
+        from scribus_mcp.appimage import AppImageError, fetch_appimage_from_env
+
+        try:
+            scribus_bin = await asyncio.to_thread(
+                fetch_appimage_from_env, log_fn=log.info
+            )
+        except AppImageError as exc:
+            log.warning("AppImage fetch failed: %s", exc)
+            return None
+
+    if scribus_bin is not None:
+        _BINARY_CACHE[id(config)] = scribus_bin
+    return scribus_bin
+
+
+def _invalidate_binary_cache(config: Config | None = None) -> None:
+    """Drop the cached binary path. Used by tests."""
+    if config is None:
+        _BINARY_CACHE.clear()
+    else:
+        _BINARY_CACHE.pop(id(config), None)
+
+
 @lru_cache(maxsize=8)
 def _detect_scribus_version(scribus_bin: str) -> tuple[int, int] | None:
     """Probe ``<scribus_bin> -v`` and return ``(major, minor)`` or ``None``.
@@ -117,30 +172,7 @@ async def ensure_bridge_running(
     if not spy.is_file():
         return False, f"bridge .spy not found at {spy}"
 
-    # ``ignore_host_scribus`` skips every host-binary lookup so the
-    # AppImage path always wins — the typical use case is a host with
-    # Scribus 1.6 installed where the user wants the 1.7.x AppImage for
-    # the full feature surface.
-    if config.ignore_host_scribus:
-        scribus_bin = None
-        log.info(
-            "SCRIBUS_MCP_IGNORE_HOST_SCRIBUS=1 — skipping host binary "
-            "lookup, going straight to AppImage path."
-        )
-    else:
-        scribus_bin = _resolve_scribus_bin(config.scribus_bin)
-    if scribus_bin is None and config.auto_appimage:
-        # Opt-in: fetch the official AppImage and use it. Runs the
-        # blocking download on a worker thread so the asyncio loop
-        # isn't pinned for the duration.
-        from scribus_mcp.appimage import AppImageError, fetch_appimage_from_env
-
-        try:
-            scribus_bin = await asyncio.to_thread(
-                fetch_appimage_from_env, log_fn=log.info
-            )
-        except AppImageError as exc:
-            return False, f"SCRIBUS_MCP_AUTO_APPIMAGE fetch failed: {exc}"
+    scribus_bin = await resolve_scribus_binary(config)
     if scribus_bin is None:
         if config.ignore_host_scribus and not config.auto_appimage:
             return False, (

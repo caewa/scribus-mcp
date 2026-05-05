@@ -56,12 +56,11 @@ class HeadlessBackend(ScribusBackend):
         self.config = config
 
     async def is_available(self) -> bool:
-        return Path(self.config.scribus_bin).exists() or self._scribus_on_path()
+        # Honor IGNORE_HOST_SCRIBUS / AUTO_APPIMAGE — same resolver the
+        # launcher uses, so headless and interactive agree on the binary.
+        from scribus_mcp.backends._launcher import resolve_scribus_binary
 
-    def _scribus_on_path(self) -> bool:
-        import shutil
-
-        return shutil.which(self.config.scribus_bin) is not None
+        return await resolve_scribus_binary(self.config) is not None
 
     async def call(self, method: str, *args: Any, **kwargs: Any) -> ScribusResult:
         body = f"_value = {py_call(method, *args, **kwargs)}"
@@ -82,7 +81,15 @@ class HeadlessBackend(ScribusBackend):
             prefs_dir = self.config.workdir / f"prefs-{job_id}"
             _write_prefs_with_font_dirs(prefs_dir, self.config.extra_font_paths)
 
-        cmd = self._build_cmd(script_path, prefs_dir)
+        # Resolve once per call (cached after the first lookup) so
+        # IGNORE_HOST_SCRIBUS / AUTO_APPIMAGE are honored. Falls back to
+        # config.scribus_bin if the resolver returns None — preserves the
+        # historical "binary not found" error path below.
+        from scribus_mcp.backends._launcher import resolve_scribus_binary
+
+        resolved = await resolve_scribus_binary(self.config)
+        scribus_bin = str(resolved) if resolved is not None else self.config.scribus_bin
+        cmd = self._build_cmd(script_path, prefs_dir, scribus_bin=scribus_bin)
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -126,8 +133,18 @@ class HeadlessBackend(ScribusBackend):
             stderr=stderr,
         )
 
-    def _build_cmd(self, script_path: Path, prefs_dir: Path | None = None) -> list[str]:
-        scribus_bin = self.config.scribus_bin
+    def _build_cmd(
+        self,
+        script_path: Path,
+        prefs_dir: Path | None = None,
+        scribus_bin: str | None = None,
+    ) -> list[str]:
+        # ``scribus_bin`` overrides ``config.scribus_bin`` when the caller
+        # has already resolved the binary (e.g. via the AppImage path).
+        # Tests still call this without the override and get the legacy
+        # config-driven path.
+        if scribus_bin is None:
+            scribus_bin = self.config.scribus_bin
         # Scribus headless: -g (no GUI), -ns (no splash). -pr <dir> overrides
         # the per-user prefs directory — we use this when extra_font_paths
         # is configured, so the spawned Scribus picks up additional font
