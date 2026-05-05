@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -17,7 +18,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         height_mm: float,
         gap_mm: float = 6.0,
         font_size_pt: float = 10.0,
-        text_color: str = "Black",
+        text_color: str = "ink",
         alignment: str = "justify",
         line_spacing_pt: float = 13.0,
         mode: Mode = "auto",
@@ -38,6 +39,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         left_bb, right_bb = bboxes
 
         backend = await get_backend(ctx, mode)
+        text_color, _ = await resolve_color(backend, text_color)
 
         # Left column
         lr = await backend.call(

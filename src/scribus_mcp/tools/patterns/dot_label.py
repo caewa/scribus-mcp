@@ -8,6 +8,7 @@ look (the kind seen in numbered "Getting Started" lists).
 from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -17,8 +18,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         center_x_mm: float,
         center_y_mm: float,
         diameter_mm: float = 12.0,
-        fill_color: str = "Black",
-        fill_shade: int = 100,
+        fill_color: str = "accent",
+        fill_shade: int | None = None,
         line_color: str = "None",
         line_width_pt: float = 0.0,
         text_color: str = "White",
@@ -44,6 +45,16 @@ def register(mcp, ctx: ServerCtx) -> None:
         rect_x = center_x_mm - radius
         rect_y = center_y_mm - radius
 
+        backend = await get_backend(ctx, mode)
+        fill_color, fill_shade = await resolve_color(
+            backend, fill_color, fallback_shade=100, current_shade=fill_shade,
+        )
+        line_color, _ = await resolve_color(
+            backend, line_color if line_color and line_color != "None" else None,
+            fallback_color="None",
+        )
+        text_color, _ = await resolve_color(backend, text_color, fallback_color="White")
+
         body_parts = [
             "import scribus as _s",
             f"_circle = _s.createEllipse({rect_x}, {rect_y}, {diameter_mm}, {diameter_mm})",
@@ -68,7 +79,6 @@ def register(mcp, ctx: ServerCtx) -> None:
             ]
         )
 
-        backend = await get_backend(ctx, mode)
         res = await backend.script("\n".join(body_parts) + "\n", result_expr="_value")
         if not res.ok:
             return {"ok": False, "error": res.error or "dot_label script failed"}
@@ -86,7 +96,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         center_x_mm: float,
         center_y_mm: float,
         diameter_mm: float = 12.0,
-        fill_color: str = "Black",
+        fill_color: str = "accent",
         text_color: str = "White",
         text_font_size_pt: float = 14.0,
         mode: Mode = "auto",
@@ -106,6 +116,8 @@ def register(mcp, ctx: ServerCtx) -> None:
             return {"ok": False, "error": "diameter_mm must be > 0"}
 
         backend = await get_backend(ctx, mode)
+        fill_color, _ = await resolve_color(backend, fill_color)
+        text_color, _ = await resolve_color(backend, text_color, fallback_color="White")
         radius = diameter_mm / 2.0
 
         # Step 1: filled circle anchored at (center_x, center_y)

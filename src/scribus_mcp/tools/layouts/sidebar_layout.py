@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -15,16 +16,16 @@ def register(mcp, ctx: ServerCtx) -> None:
         sidebar_side: str = "left",
         sidebar_width_mm: float = 50.0,
         gap_mm: float = 6.0,
-        sidebar_fill_color: str = "Black",
-        sidebar_fill_shade: int = 8,
+        sidebar_fill_color: str = "surface",
+        sidebar_fill_shade: int | None = None,
         sidebar_padding_mm: float = 4.0,
         sidebar_text: str = "",
-        sidebar_color: str = "Black",
+        sidebar_color: str = "ink",
         sidebar_font_size_pt: float = 9.0,
         sidebar_alignment: str = "left",
         sidebar_line_spacing_pt: float = 12.0,
         main_text: str = "",
-        main_color: str = "Black",
+        main_color: str = "ink",
         main_font_size_pt: float = 10.0,
         main_alignment: str = "justify",
         main_line_spacing_pt: float = 13.0,
@@ -51,6 +52,11 @@ def register(mcp, ctx: ServerCtx) -> None:
             return {"ok": False, "error": f"main_alignment must be one of {sorted(align_map)}"}
 
         backend = await get_backend(ctx, mode)
+        sidebar_fill_color, sidebar_fill_shade = await resolve_color(
+            backend, sidebar_fill_color, fallback_shade=8, current_shade=sidebar_fill_shade,
+        )
+        sidebar_color, _ = await resolve_color(backend, sidebar_color)
+        main_color, _ = await resolve_color(backend, main_color)
         main_w = width_mm - sidebar_width_mm - gap_mm
 
         if sidebar_side == "left":

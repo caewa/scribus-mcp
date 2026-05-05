@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_row_bboxes
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -21,17 +22,17 @@ def register(mcp, ctx: ServerCtx) -> None:
         item_height_mm: float = 32.0,
         gap_mm: float = 6.0,
         badge_diameter_mm: float = 12.0,
-        badge_fill_color: str = "Black",
+        badge_fill_color: str = "accent",
         badge_text_color: str = "White",
         badge_text_font_size_pt: float = 14.0,
-        body_fill_color: str = "Black",
-        body_fill_shade: int = 8,
-        body_border_color: str = "Black",
-        body_border_shade: int = 25,
+        body_fill_color: str = "surface",
+        body_fill_shade: int | None = None,
+        body_border_color: str = "muted",
+        body_border_shade: int | None = None,
         body_border_width_pt: float = 0.5,
-        title_color: str = "Black",
+        title_color: str = "ink",
         title_font_size_pt: float = 11.0,
-        body_text_color: str = "Black",
+        body_text_color: str = "ink",
         body_text_font_size_pt: float = 9.0,
         body_padding_mm: float = 4.0,
         body_title_height_mm: float = 6.0,
@@ -54,6 +55,16 @@ def register(mcp, ctx: ServerCtx) -> None:
                 return {"ok": False, "error": f"item {i} needs 'title' and 'body'"}
 
         backend = await get_backend(ctx, mode)
+        badge_fill_color, _ = await resolve_color(backend, badge_fill_color)
+        badge_text_color, _ = await resolve_color(backend, badge_text_color, fallback_color="White")
+        body_fill_color, body_fill_shade = await resolve_color(
+            backend, body_fill_color, fallback_shade=8, current_shade=body_fill_shade,
+        )
+        body_border_color, body_border_shade = await resolve_color(
+            backend, body_border_color, fallback_shade=25, current_shade=body_border_shade,
+        )
+        title_color, _ = await resolve_color(backend, title_color)
+        body_text_color, _ = await resolve_color(backend, body_text_color)
         out: list[dict] = []
         body_x = x_mm + badge_diameter_mm + body_x_offset_mm
         body_w = width_mm - badge_diameter_mm - body_x_offset_mm

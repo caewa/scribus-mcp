@@ -9,6 +9,7 @@ from scribus_mcp.tools._common import (
     get_backend,
     require_min_scribus_version,
 )
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -21,7 +22,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         encoder: str = "qrcode",
         options: str = "eclevel=H",
         caption: str = "",
-        caption_color: str = "Black",
+        caption_color: str = "muted",
         caption_font_size_pt: float = 7.5,
         mode: Mode = "auto",
     ) -> dict:
@@ -48,6 +49,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         if gate is not None:
             return gate
 
+        caption_color, _ = await resolve_color(backend, caption_color)
         cap_h = max(4.0, caption_font_size_pt * 0.5 + 1.5)
         caption = clean_user_text(caption)
         body = f"""

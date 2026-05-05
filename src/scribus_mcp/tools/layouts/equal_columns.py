@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -55,6 +56,12 @@ def register(mcp, ctx: ServerCtx) -> None:
             return {"ok": False, "error": "could not compute bboxes"}
 
         backend = await get_backend(ctx, mode)
+        # ``fill_color`` defaults to ``"None"`` (no background); only resolve
+        # if the caller passed something to pin to the palette.
+        if fill_color and fill_color != "None":
+            fill_color, fill_shade = await resolve_color(
+                backend, fill_color, fallback_shade=100, current_shade=fill_shade,
+            )
         create_method = {
             "text": "createText",
             "rectangle": "createRect",

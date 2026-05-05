@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -18,7 +19,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         image_ratio: float = 0.4,
         gap_mm: float = 6.0,
         font_size_pt: float = 10.0,
-        text_color: str = "Black",
+        text_color: str = "ink",
         alignment: str = "justify",
         line_spacing_pt: float = 13.0,
         scale_image_to_frame: bool = True,
@@ -44,6 +45,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             return {"ok": False, "error": f"alignment must be one of {sorted(align_map)}"}
 
         backend = await get_backend(ctx, mode)
+        text_color, _ = await resolve_color(backend, text_color)
         avail = width_mm - gap_mm
         img_w = avail * image_ratio
         text_w = avail - img_w

@@ -109,7 +109,10 @@ def test_bar_chart_emits_one_script_call_single_dataset(patched_backend):
     )
     assert r["ok"] is True
     assert patched_backend.script_count == 1
-    assert patched_backend.call_count == 0
+    # Up to one backend.call is allowed for the palette probe
+    # (getColorNames). The pattern itself must not emit per-primitive
+    # backend.call() — those would multiply Scribus spawns in headless.
+    assert patched_backend.call_count <= 1
     # The body must reference every primitive type the chart needs.
     body = patched_backend.last_script_body or ""
     assert "_s.createLine" in body  # gridlines
@@ -135,7 +138,10 @@ def test_bar_chart_emits_one_script_call_multi_dataset(patched_backend):
     )
     assert r["ok"] is True
     assert patched_backend.script_count == 1
-    assert patched_backend.call_count == 0
+    # Up to one backend.call is allowed for the palette probe
+    # (getColorNames). The pattern itself must not emit per-primitive
+    # backend.call() — those would multiply Scribus spawns in headless.
+    assert patched_backend.call_count <= 1
 
 
 def test_bar_chart_validation_short_circuits_before_backend(patched_backend):

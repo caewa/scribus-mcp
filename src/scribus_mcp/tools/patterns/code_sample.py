@@ -19,6 +19,7 @@ is one round-trip.
 from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools.palette import resolve_color
 
 
 def _hex_to_rgb(h: str) -> tuple[int, int, int]:
@@ -130,13 +131,13 @@ def register(mcp, ctx: ServerCtx) -> None:
         title: str = "",
         title_height_mm: float = 6.0,
         title_font_size_pt: float = 9.0,
-        title_color: str = "Black",
+        title_color: str = "ink",
         title_fill_color: str = "",
         show_line_numbers: bool = False,
         line_number_color: str = "",
         background_color: str = "",
-        border_color: str = "Black",
-        border_shade: int = 25,
+        border_color: str = "muted",
+        border_shade: int | None = None,
         border_width_pt: float = 0.4,
         padding_mm: float = 3.0,
         mode: Mode = "auto",
@@ -292,6 +293,12 @@ def register(mcp, ctx: ServerCtx) -> None:
 
         ls = float(line_spacing_pt) if line_spacing_pt > 0 else float(font_size_pt) * 1.25
 
+        backend = await get_backend(ctx, mode)
+        title_color, _ = await resolve_color(backend, title_color)
+        border_color, border_shade = await resolve_color(
+            backend, border_color, fallback_shade=25, current_shade=border_shade,
+        )
+
         # ---- 5. One script body that creates everything -------------------
         # Includes monospace-font resolution inside Scribus so the whole
         # pattern is one round-trip.
@@ -396,7 +403,6 @@ _value = {{
 }}
 """
 
-        backend = await get_backend(ctx, mode)
         res = await backend.script(body, result_expr="_value")
         if not res.ok:
             return {"ok": False, "error": res.error or "code_sample script failed"}

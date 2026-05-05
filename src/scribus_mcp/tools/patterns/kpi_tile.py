@@ -9,6 +9,7 @@ concatenate many fragments and dispatch a whole row in one round-trip.
 from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
+from scribus_mcp.tools.palette import resolve_color
 
 
 def render_kpi_tile_script(
@@ -76,15 +77,16 @@ def render_kpi_tile_script(
     # Vertical: ``_mm_for(F) ≈ F * 0.7`` is a rule-of-thumb mm-per-pt for
     # line height including leading; max_v_font is the pt size that
     # fills ``val_band_h`` mm.
-    # Horizontal: average char width for proportional sans serif is
-    # roughly ``0.55 * F`` pt; max_h_font is the pt size at which
-    # ``len(value)`` chars span the inner width. Without this, a long
-    # value like "Apache 2.0" at 22 pt would wrap onto two lines in a
-    # tile that's only ~33 mm wide.
+    # Horizontal: average advance width for DejaVu Sans (the Scribus
+    # default) sits around 0.56 em for mixed text and climbs higher for
+    # words leading with capitals. 0.62 covers that worst-case mix; the
+    # extra 0.93 safety multiplier on the inner width absorbs glyph
+    # advance variance that tipped "Apache 2.0" into a second line at
+    # the previous 0.55 factor.
     max_v_font = val_band_h / 0.7
-    char_w_factor = 0.55
+    char_w_factor = 0.62
     char_count = max(1, len(value))
-    max_h_font_pt = (text_w * 2.834645669) / (char_count * char_w_factor)
+    max_h_font_pt = (text_w * 2.834645669 * 0.93) / (char_count * char_w_factor)
     actual_value_font = max(
         6.0, min(float(value_font_size_pt), max_v_font, max_h_font_pt)
     )
@@ -131,13 +133,13 @@ async def render_kpi_tile(
     width_mm: float = 50.0,
     height_mm: float = 30.0,
     delta: str = "",
-    fill_color: str = "Black",
-    fill_shade: int = 6,
-    value_color: str = "Black",
+    fill_color: str = "surface",
+    fill_shade: int | None = None,
+    value_color: str = "accent",
     value_font_size_pt: float = 24,
-    label_color: str = "Black",
+    label_color: str = "muted",
     label_font_size_pt: float = 8,
-    delta_color: str = "Black",
+    delta_color: str = "muted",
     delta_font_size_pt: float = 8,
     compact: bool = False,
 ) -> dict:
@@ -147,6 +149,12 @@ async def render_kpi_tile(
     ``render_kpi_tile_script`` directly so it can batch multiple tiles
     into one script.
     """
+    fill_color, fill_shade = await resolve_color(
+        backend, fill_color, fallback_shade=6, current_shade=fill_shade,
+    )
+    value_color, _ = await resolve_color(backend, value_color)
+    label_color, _ = await resolve_color(backend, label_color)
+    delta_color, _ = await resolve_color(backend, delta_color)
     fragment, actual_value_font = render_kpi_tile_script(
         var_prefix="t",
         value=value,
@@ -197,13 +205,13 @@ def register(mcp, ctx: ServerCtx) -> None:
         width_mm: float = 50.0,
         height_mm: float = 30.0,
         delta: str = "",
-        fill_color: str = "Black",
-        fill_shade: int = 6,
-        value_color: str = "Black",
+        fill_color: str = "surface",
+        fill_shade: int | None = None,
+        value_color: str = "accent",
         value_font_size_pt: float = 24,
-        label_color: str = "Black",
+        label_color: str = "muted",
         label_font_size_pt: float = 8,
-        delta_color: str = "Black",
+        delta_color: str = "muted",
         delta_font_size_pt: float = 8,
         compact: bool = False,
         mode: Mode = "auto",
@@ -217,6 +225,12 @@ def register(mcp, ctx: ServerCtx) -> None:
         ``compact=True`` halves padding + gaps for dense dashboards. Pair
         with smaller ``value_font_size_pt`` (e.g. 18) and a shorter
         ``height_mm`` (e.g. 22) for a row of compact KPIs.
+
+        Color slots default to palette roles — ``surface`` (background),
+        ``accent`` (value), ``muted`` (label + delta). Define those names
+        with ``define_color_rgb`` to make every tile pick them up; leave
+        the palette unset and slots fall back to ``Black`` at the
+        conventional shade.
         """
         backend = await get_backend(ctx, mode)
         return await render_kpi_tile(

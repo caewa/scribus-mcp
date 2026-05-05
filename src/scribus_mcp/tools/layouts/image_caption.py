@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -20,10 +21,10 @@ def register(mcp, ctx: ServerCtx) -> None:
         proportional: bool = True,
         caption_height_mm: float = 8.0,
         caption_gap_mm: float = 1.0,
-        caption_color: str = "Black",
+        caption_color: str = "muted",
         caption_font_size_pt: float = 8.0,
         caption_alignment: str = "left",
-        figure_label_color: str = "Black",
+        figure_label_color: str = "accent",
         mode: Mode = "auto",
     ) -> dict:
         """Image frame plus a caption underneath. The image takes
@@ -44,6 +45,8 @@ def register(mcp, ctx: ServerCtx) -> None:
             return {"ok": False, "error": "height_mm too small for caption + gap"}
 
         backend = await get_backend(ctx, mode)
+        caption_color, _ = await resolve_color(backend, caption_color)
+        figure_label_color, _ = await resolve_color(backend, figure_label_color)
         caption = clean_user_text(caption)
         img_h = height_mm - caption_height_mm - caption_gap_mm
 

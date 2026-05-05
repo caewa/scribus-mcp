@@ -13,6 +13,7 @@ import math
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools._fit import FIT_TEXT_FRAME_HELPER
 from scribus_mcp.tools.layouts._geometry import compute_grid_bboxes
+from scribus_mcp.tools.palette import resolve_color
 
 _ALIGN = {"left": 0, "center": 1, "right": 2, "justify": 3, "forced": 4}
 _VALID_SIDES = {"left", "top", "right", "bottom"}
@@ -183,25 +184,25 @@ def register(mcp, ctx: ServerCtx) -> None:
         columns: int = 2,
         column_gap_mm: float = 4.0,
         row_gap_mm: float = 4.0,
-        accent_color: str = "Black",
+        accent_color: str = "accent",
         accent_side: str = "left",
         accent_thickness_mm: float = 2.0,
-        fill_color: str = "Black",
-        fill_shade: int = 8,
-        border_color: str = "Black",
-        border_shade: int = 25,
+        fill_color: str = "surface",
+        fill_shade: int | None = None,
+        border_color: str = "muted",
+        border_shade: int | None = None,
         border_width_pt: float = 0.5,
         corner_radius_pt: float = 4,
-        title_color: str = "Black",
+        title_color: str = "ink",
         title_font_size_pt: float = 14.0,
-        eyebrow_color: str = "Black",
+        eyebrow_color: str = "accent",
         eyebrow_font_size_pt: float = 7.0,
-        body_color: str = "Black",
+        body_color: str = "ink",
         body_font_size_pt: float = 9.0,
         body_alignment: str = "justify",
         body_line_spacing_pt: float = 12.0,
         padding_mm: float = 6.0,
-        auto_height: bool = False,
+        auto_height: bool = True,
         mode: Mode = "auto",
     ) -> dict:
         """Render a 2D grid of cards inside (x, y, width, height).
@@ -218,12 +219,16 @@ def register(mcp, ctx: ServerCtx) -> None:
         cell's bbox comes from ``compute_grid_bboxes`` so the grid never
         overflows. Set ``accent_thickness_mm=0`` to omit accent stripes.
 
-        ``auto_height=True`` measures each card's body text after layout
-        and shrinks the card chrome to fit. Within a row, every card
-        adopts the row's tallest fitted height so the cards line up.
-        Subsequent rows are repacked accordingly. The result's
-        ``grid_height_mm`` field carries the total (possibly shrunk)
-        grid height — chain it via ``PageCursor.jump_to``.
+        ``auto_height`` (default ``True``) measures each card's body
+        text after layout and resizes the card chrome to fit — the body
+        grows when the caller's ``height_mm`` is too short and shrinks
+        when it's too tall. Within a row, every card adopts the row's
+        tallest fitted height so the cards line up; subsequent rows are
+        repacked upward. The result's ``grid_height_mm`` field carries
+        the total fitted height — chain it via ``PageCursor.jump_to``.
+        Pass ``auto_height=False`` only when you specifically want the
+        cards pinned to the caller-provided ``height_mm`` (e.g. when the
+        grid sits inside a fixed band).
 
         Returns the names of every piece for each card so callers can re-style.
         """
@@ -258,6 +263,16 @@ def register(mcp, ctx: ServerCtx) -> None:
             }
 
         backend = await get_backend(ctx, mode)
+        accent_color, _ = await resolve_color(backend, accent_color)
+        fill_color, fill_shade = await resolve_color(
+            backend, fill_color, fallback_shade=8, current_shade=fill_shade,
+        )
+        border_color, border_shade = await resolve_color(
+            backend, border_color, fallback_shade=25, current_shade=border_shade,
+        )
+        title_color, _ = await resolve_color(backend, title_color)
+        eyebrow_color, _ = await resolve_color(backend, eyebrow_color)
+        body_color, _ = await resolve_color(backend, body_color)
         cards: list[dict] = []
         for i, it in enumerate(items):
             it_side = it.get("accent_side", accent_side)
@@ -267,24 +282,40 @@ def register(mcp, ctx: ServerCtx) -> None:
                     "error": f"item {i}: accent_side must be one of {sorted(_VALID_SIDES)}",
                     "cards": cards,
                 }
+            # Per-item palette resolution — items may pass role names too.
+            it_accent, _ = await resolve_color(backend, str(it.get("accent_color", accent_color)))
+            it_fill, it_fill_shade = await resolve_color(
+                backend,
+                str(it.get("fill_color", fill_color)),
+                fallback_shade=8,
+                current_shade=int(it["fill_shade"]) if "fill_shade" in it else fill_shade,
+            )
+            it_border, it_border_shade = await resolve_color(
+                backend,
+                str(it.get("border_color", border_color)),
+                fallback_shade=25,
+                current_shade=int(it["border_shade"]) if "border_shade" in it else border_shade,
+            )
+            it_title, _ = await resolve_color(backend, str(it.get("title_color", title_color)))
+            it_eyebrow, _ = await resolve_color(backend, str(it.get("eyebrow_color", eyebrow_color)))
             r = await _render_card(
                 backend,
                 bbox=bboxes[i],
                 title=str(it["title"]),
                 body=str(it["body"]),
                 eyebrow=str(it.get("eyebrow", "")),
-                accent_color=str(it.get("accent_color", accent_color)),
+                accent_color=it_accent,
                 accent_side=it_side,
                 accent_thickness_mm=float(accent_thickness_mm),
-                fill_color=str(it.get("fill_color", fill_color)),
-                fill_shade=int(it.get("fill_shade", fill_shade)),
-                border_color=str(it.get("border_color", border_color)),
-                border_shade=int(it.get("border_shade", border_shade)),
+                fill_color=it_fill,
+                fill_shade=it_fill_shade,
+                border_color=it_border,
+                border_shade=it_border_shade,
                 border_width_pt=float(border_width_pt),
                 corner_radius_pt=float(corner_radius_pt),
-                title_color=str(it.get("title_color", title_color)),
+                title_color=it_title,
                 title_font_size_pt=float(title_font_size_pt),
-                eyebrow_color=str(it.get("eyebrow_color", eyebrow_color)),
+                eyebrow_color=it_eyebrow,
                 eyebrow_font_size_pt=float(eyebrow_font_size_pt),
                 body_color=str(body_color),
                 body_font_size_pt=float(body_font_size_pt),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -13,8 +14,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         y_mm: float,
         width_mm: float,
         height_mm: float = 28.0,
-        fill_color: str = "Black",
-        fill_shade: int = 100,
+        fill_color: str = "primary",
+        fill_shade: int | None = None,
         title_color: str = "White",
         title_font_size_pt: float = 22.0,
         subtitle: str = "",
@@ -40,8 +41,21 @@ def register(mcp, ctx: ServerCtx) -> None:
 
         Plus optional ``right_text`` (small) anchored to the band's right
         edge, useful for version / date / context labels in the page chrome.
+
+        ``fill_color`` defaults to the palette role ``primary`` — define
+        it with ``define_color_rgb`` and every hero band picks up the
+        brand color. Title / subtitle / eyebrow / right text default to
+        ``"White"`` for contrast on the dark band; resolution still
+        accepts palette role names if you want to override.
         """
         backend = await get_backend(ctx, mode)
+        fill_color, fill_shade = await resolve_color(
+            backend, fill_color, fallback_shade=100, current_shade=fill_shade,
+        )
+        title_color, _ = await resolve_color(backend, title_color, fallback_color="White")
+        subtitle_color, _ = await resolve_color(backend, subtitle_color, fallback_color="White")
+        eyebrow_color, _ = await resolve_color(backend, eyebrow_color, fallback_color="White")
+        right_color, _ = await resolve_color(backend, right_color, fallback_color="White")
 
         # Background band
         br = await backend.call("createRect", x_mm, y_mm, width_mm, height_mm)

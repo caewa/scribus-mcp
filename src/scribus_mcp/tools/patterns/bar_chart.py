@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
+from scribus_mcp.tools.palette import resolve_color
 from scribus_mcp.tools.patterns._styling import HAIRLINE_PT
 
 
@@ -32,12 +33,12 @@ def register(mcp, ctx: ServerCtx) -> None:
         values: list[float] | None = None,
         datasets: list[dict] | None = None,
         max_value: float = 0.0,
-        bar_color: str = "Black",
-        bar_shade: int = 80,
+        bar_color: str = "accent",
+        bar_shade: int | None = None,
         gridlines: int = 4,
-        gridline_color: str = "Black",
-        gridline_shade: int = 15,
-        label_color: str = "Black",
+        gridline_color: str = "muted",
+        gridline_shade: int | None = None,
+        label_color: str = "ink",
         label_font_size_pt: float = 8.0,
         show_values: bool = False,
         legend_position: str = "below",
@@ -100,6 +101,7 @@ def register(mcp, ctx: ServerCtx) -> None:
                 "ok": False,
                 "error": f"legend_position must be 'below' or 'none' (got {legend_position!r})",
             }
+
         # Legacy single-dataset early check — preserves the historical
         # "labels and values must have the same length" error.
         if values is not None and len(values) != n:
@@ -107,6 +109,15 @@ def register(mcp, ctx: ServerCtx) -> None:
                 "ok": False,
                 "error": "labels and values must have the same length",
             }
+
+        backend = await get_backend(ctx, mode)
+        bar_color, bar_shade = await resolve_color(
+            backend, bar_color, fallback_shade=80, current_shade=bar_shade,
+        )
+        gridline_color, gridline_shade = await resolve_color(
+            backend, gridline_color, fallback_shade=15, current_shade=gridline_shade,
+        )
+        label_color, _ = await resolve_color(backend, label_color)
 
         # Normalize the legacy single-dataset form into a datasets list.
         if datasets is None:
@@ -329,7 +340,6 @@ _value = {{
 }}
 """
 
-        backend = await get_backend(ctx, mode)
         res = await backend.script(body, result_expr="_value")
         if not res.ok:
             return {"ok": False, "error": res.error or "bar_chart script failed"}

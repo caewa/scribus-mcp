@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
+from scribus_mcp.tools.palette import resolve_color
 from scribus_mcp.tools.patterns._styling import THIN_PT
 
 
@@ -23,15 +24,15 @@ def register(mcp, ctx: ServerCtx) -> None:
         column_widths: list[float] | None = None,
         row_height_mm: float = 7.0,
         header_height_mm: float = 6.5,
-        header_color: str = "Black",
+        header_color: str = "muted",
         header_font_size_pt: float = 8.0,
-        cell_color: str = "Black",
+        cell_color: str = "ink",
         cell_font_size_pt: float = 9.0,
         zebra: bool = True,
-        zebra_fill_color: str = "Black",
-        zebra_fill_shade: int = 6,
-        rule_color: str = "Black",
-        rule_shade: int = 25,
+        zebra_fill_color: str = "surface",
+        zebra_fill_shade: int | None = None,
+        rule_color: str = "muted",
+        rule_shade: int | None = None,
         mode: Mode = "auto",
     ) -> dict:
         """Render a flat comparison table from headers + rows of cell text.
@@ -54,6 +55,16 @@ def register(mcp, ctx: ServerCtx) -> None:
             column_widths = [b["width_mm"] for b in equal]
         elif len(column_widths) != ncols:
             return {"ok": False, "error": f"column_widths must have {ncols} entries"}
+
+        backend = await get_backend(ctx, mode)
+        header_color, _ = await resolve_color(backend, header_color)
+        cell_color, _ = await resolve_color(backend, cell_color)
+        zebra_fill_color, zebra_fill_shade = await resolve_color(
+            backend, zebra_fill_color, fallback_shade=6, current_shade=zebra_fill_shade,
+        )
+        rule_color, rule_shade = await resolve_color(
+            backend, rule_color, fallback_shade=25, current_shade=rule_shade,
+        )
 
         # ---- Pre-compute every primitive's spec Python-side -------------
 
@@ -139,7 +150,6 @@ _value = {{
 }}
 """
 
-        backend = await get_backend(ctx, mode)
         res = await backend.script(body, result_expr="_value")
         if not res.ok:
             return {"ok": False, "error": res.error or "comparison_table script failed"}

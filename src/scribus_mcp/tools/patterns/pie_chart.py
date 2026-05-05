@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -30,7 +31,7 @@ def register(mcp, ctx: ServerCtx) -> None:
         legend_label_width_mm: float = 32.0,
         show_legend: bool = True,
         label_font_size_pt: float = 8.0,
-        label_color: str = "Black",
+        label_color: str = "ink",
         mode: Mode = "auto",
     ) -> dict:
         """Pie chart approximated by polygons (one per slice). Each slice is a
@@ -70,6 +71,9 @@ def register(mcp, ctx: ServerCtx) -> None:
         total = sum(values)
         if total <= 0:
             return {"ok": False, "error": "sum of values must be > 0"}
+
+        backend = await get_backend(ctx, mode)
+        label_color, _ = await resolve_color(backend, label_color)
 
         default_colors = ["Black", "Cyan", "Magenta", "Yellow", "Red", "Blue", "Green"]
         slice_colors = list(colors) if colors else default_colors
@@ -205,7 +209,6 @@ _value = {{
 }}
 """
 
-        backend = await get_backend(ctx, mode)
         res = await backend.script(body, result_expr="_value")
         if not res.ok:
             return {"ok": False, "error": res.error or "pie_chart script failed"}

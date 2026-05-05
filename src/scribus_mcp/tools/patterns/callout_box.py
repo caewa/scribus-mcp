@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools._fit import FIT_TEXT_FRAME_HELPER
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -18,34 +19,51 @@ def register(mcp, ctx: ServerCtx) -> None:
         y_mm: float,
         width_mm: float,
         height_mm: float,
-        fill_color: str = "Black",
-        fill_shade: int = 8,
-        border_color: str = "Black",
-        border_shade: int = 25,
+        fill_color: str = "surface",
+        fill_shade: int | None = None,
+        border_color: str = "muted",
+        border_shade: int | None = None,
         border_width_pt: float = 0.6,
-        title_color: str = "Black",
+        title_color: str = "ink",
         title_font_size_pt: float = 11,
-        body_color: str = "Black",
+        body_color: str = "ink",
         body_font_size_pt: float = 9,
         padding_mm: float = 4.0,
         title_height_mm: float = 6.0,
-        auto_height: bool = False,
+        auto_height: bool = True,
         mode: Mode = "auto",
     ) -> dict:
         """A bordered, lightly-shaded box with a title and a body paragraph.
         Useful for tips, warnings, callouts, sidebars.
 
-        ``auto_height=True`` measures the rendered body text and
-        shrinks the body frame + the background rect so the box fits
-        snugly around its content. The returned ``height_mm`` field
-        carries the final box height (which can be used by
-        ``PageCursor.jump_to`` to chain).
+        ``auto_height`` (default ``True``) measures the rendered body
+        text and resizes the body frame + the background rect so the
+        box fits snugly around its content. The returned ``height_mm``
+        field carries the final box height (which can be used by
+        ``PageCursor.jump_to`` to chain). Pass ``auto_height=False``
+        only when you specifically need the box pinned to the
+        caller-provided ``height_mm``.
+
+        Color slots default to palette roles — ``surface`` (fill),
+        ``muted`` (border), ``ink`` (title + body). Define those names
+        with ``define_color_rgb`` and the box adopts them automatically;
+        leave the palette unset and slots fall back to the historical
+        ``Black`` / shaded defaults.
         """
         body_y = y_mm + padding_mm + title_height_mm + 1
         body_h = height_mm - (padding_mm * 2) - title_height_mm - 1
         text_w = width_mm - 2 * padding_mm
         title = clean_user_text(title)
         body = clean_user_text(body)
+        backend = await get_backend(ctx, mode)
+        fill_color, fill_shade = await resolve_color(
+            backend, fill_color, fallback_shade=8, current_shade=fill_shade,
+        )
+        border_color, border_shade = await resolve_color(
+            backend, border_color, fallback_shade=25, current_shade=border_shade,
+        )
+        title_color, _ = await resolve_color(backend, title_color)
+        body_color, _ = await resolve_color(backend, body_color)
 
         autofit_block = ""
         if auto_height:
@@ -91,7 +109,6 @@ except NameError:
 _value = {{"background": _bg, "title": _title, "body": _body, "height_mm": _final_h}}
 """
 
-        backend = await get_backend(ctx, mode)
         res = await backend.script(script, result_expr="_value")
         if not res.ok:
             return {"ok": False, "error": res.error or "callout_box script failed"}

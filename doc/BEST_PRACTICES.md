@@ -103,6 +103,50 @@ for n, c, m, y, k in (("Brand Deep", 85, 55, 0, 10), ...):
 `create_code_sample` is the exception — it auto-defines token colors
 from the Pygments style.
 
+## Palette roles — define once, every tool uses them
+
+Every color slot defaults to a **palette role name** instead of `Black`.
+Define those role names with `define_color_rgb` / `define_color_cmyk`
+once at the top of a script and every later tool inherits the palette
+without restating the color on every call. Roles you don't define fall
+back to the historical `"Black"` default with the tool's conventional
+shade — there's no behaviour change for scripts that ignore the
+convention.
+
+The canonical roles (also exposed via `list_palette_roles`):
+
+| Role      | Used for                                                            |
+|-----------|---------------------------------------------------------------------|
+| `primary` | brand main color (cover band, big titles, dominant accents)         |
+| `accent`  | secondary highlight (eyebrows, KPI values, marker fills, badges)    |
+| `surface` | light fill for cards, callouts, table backgrounds, sidebars         |
+| `ink`     | body text and dark elements (titles, body, table cells)             |
+| `muted`   | de-emphasised text, subtle borders, axis lines, table-of-contents leaders |
+| `warning` | warning / danger emphasis                                           |
+| `success` | success / positive emphasis                                         |
+| `subtle`  | even quieter borders / hairlines                                    |
+
+Typical opener:
+
+```python
+await t("define_color_rgb", name="primary", red=88, green=23, blue=128)
+await t("define_color_rgb", name="accent",  red=0,  green=170, blue=200)
+await t("define_color_rgb", name="surface", red=241, green=240, blue=248)
+await t("define_color_rgb", name="ink",     red=28, green=30,  blue=42)
+await t("define_color_rgb", name="muted",   red=120, green=120, blue=130)
+```
+
+After this, `create_card_grid`, `create_callout_box`, `create_kpi_tile`,
+`create_section_header`, `create_hero_band`, `create_timeline`, etc. all
+adopt the palette automatically. Per-call overrides still work — pass
+`accent_color="Brand Coral"` (or another role name) to override one slot.
+
+When a slot resolves to a role color the tool draws it at full shade
+(100). When a slot falls back to `"Black"` (role undefined), the tool
+keeps the conventional shade — e.g. card fills stay at `Black @ 8%` for
+a faint grey background. So define roles at the **final hue you want
+drawn**, not a base color the tool will tint.
+
 ## Markdown handles inline emphasis automatically
 
 `import_markdown` walks inline tokens, strips `**` / `*` / `` ` ``

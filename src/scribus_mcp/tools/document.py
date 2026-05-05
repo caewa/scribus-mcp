@@ -5,6 +5,7 @@ from typing import Annotated
 from pydantic import Field
 
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
+from scribus_mcp.tools.palette import invalidate_palette
 
 UNIT_MM = 1  # scribus.UNIT_MILLIMETERS
 FACING_PAGES_NO = 0
@@ -57,6 +58,8 @@ def register(mcp, ctx: ServerCtx) -> None:
             FIRST_PAGE_LEFT,
             1,
         )
+        if result.ok:
+            invalidate_palette(backend)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
@@ -64,6 +67,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         """Open an existing .sla document."""
         backend = await get_backend(ctx, mode)
         result = await backend.call("openDoc", path)
+        if result.ok:
+            invalidate_palette(backend)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
@@ -85,6 +90,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         """Close the active document without saving."""
         backend = await get_backend(ctx, mode)
         result = await backend.call("closeDoc")
+        if result.ok:
+            invalidate_palette(backend)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()
@@ -135,6 +142,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         """
         backend = await get_backend(ctx, mode)
         result = await backend.call("revertDoc")
+        if result.ok:
+            invalidate_palette(backend)
         return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
 
     @mcp.tool()

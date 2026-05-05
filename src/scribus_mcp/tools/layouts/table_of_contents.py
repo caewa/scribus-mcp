@@ -9,6 +9,7 @@ manually-composed TOC: pass it the entries + page numbers and it lays out
 from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
+from scribus_mcp.tools.palette import resolve_color
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -20,16 +21,16 @@ def register(mcp, ctx: ServerCtx) -> None:
         width_mm: float,
         line_height_mm: float = 6.0,
         title: str = "",
-        title_color: str = "Black",
+        title_color: str = "ink",
         title_font_size_pt: float = 14.0,
         title_height_mm: float = 8.0,
         title_gap_mm: float = 4.0,
-        entry_color: str = "Black",
+        entry_color: str = "ink",
         entry_font_size_pt: float = 10.0,
-        page_number_color: str = "Black",
+        page_number_color: str = "muted",
         leader_char: str = ".",
-        leader_color: str = "Black",
-        leader_shade: int = 35,
+        leader_color: str = "muted",
+        leader_shade: int | None = None,
         leader_font_size_pt: float = 10.0,
         indent_per_level_mm: float = 6.0,
         page_column_width_mm: float = 12.0,
@@ -52,6 +53,12 @@ def register(mcp, ctx: ServerCtx) -> None:
                 return {"ok": False, "error": f"entry {i} needs 'title' and 'page'"}
 
         backend = await get_backend(ctx, mode)
+        title_color, _ = await resolve_color(backend, title_color)
+        entry_color, _ = await resolve_color(backend, entry_color)
+        page_number_color, _ = await resolve_color(backend, page_number_color)
+        leader_color, leader_shade = await resolve_color(
+            backend, leader_color, fallback_shade=35, current_shade=leader_shade,
+        )
         title = clean_user_text(title)
         cur_y = y_mm
         title_name: str | None = None

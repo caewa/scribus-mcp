@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
+from scribus_mcp.tools.palette import resolve_color
 from scribus_mcp.tools.patterns._styling import THIN_PT
 
 
@@ -46,17 +47,17 @@ def register(mcp, ctx: ServerCtx) -> None:
         radius_mm: float = 50.0,
         max_value: float = 1.0,
         rings: int = 4,
-        ring_color: str = "Black",
-        ring_shade: int = 20,
-        axis_color: str = "Black",
-        axis_shade: int = 35,
-        data_fill_color: str = "Black",
-        data_fill_shade: int = 25,
-        data_line_color: str = "Black",
+        ring_color: str = "muted",
+        ring_shade: int | None = None,
+        axis_color: str = "muted",
+        axis_shade: int | None = None,
+        data_fill_color: str = "accent",
+        data_fill_shade: int | None = None,
+        data_line_color: str = "accent",
         data_line_width_pt: float = 1.5,
         data_fill_alpha: float = 1.0,
         label_font_size_pt: float = 8.0,
-        label_color: str = "Black",
+        label_color: str = "ink",
         label_offset_mm: float = 4.0,
         label_width_mm: float = 22.0,
         label_height_mm: float = 5.0,
@@ -129,6 +130,19 @@ def register(mcp, ctx: ServerCtx) -> None:
                 "ok": False,
                 "error": f"axes ({n}) and values ({len(values)}) must have the same length",
             }
+
+        backend = await get_backend(ctx, mode)
+        ring_color, ring_shade = await resolve_color(
+            backend, ring_color, fallback_shade=20, current_shade=ring_shade,
+        )
+        axis_color, axis_shade = await resolve_color(
+            backend, axis_color, fallback_shade=35, current_shade=axis_shade,
+        )
+        data_fill_color, data_fill_shade = await resolve_color(
+            backend, data_fill_color, fallback_shade=25, current_shade=data_fill_shade,
+        )
+        data_line_color, _ = await resolve_color(backend, data_line_color)
+        label_color, _ = await resolve_color(backend, label_color)
 
         if datasets is None:
             datasets = [
@@ -330,7 +344,6 @@ _value = {{
 }}
 """
 
-        backend = await get_backend(ctx, mode)
         res = await backend.script(body, result_expr="_value")
         if not res.ok:
             return {"ok": False, "error": res.error or "radar_chart script failed"}

@@ -208,6 +208,18 @@ In dev mode, your MCP client config uses the bare command — your editable inst
 
 Auto-launch is wired in: any tool call with `mode="interactive"` will spawn Scribus + load the bridge for you if no bridge is already running. No need to manually run the launch command at the start of every session.
 
+#### Wire Claude Code at a local checkout (no editable install)
+
+If you just want to test a local branch against Claude Code without installing into a venv or touching PATH, point `uvx` directly at the checkout. Each spawn rebuilds from your working tree, so further edits are picked up the next time the server starts:
+
+```bash
+claude mcp remove scribus -s user 2>/dev/null
+claude mcp add scribus -s user -e SCRIBUS_MCP_AUTO_APPIMAGE=1 -- \
+  uvx --from /absolute/path/to/scribus-mcp scribus-mcp
+```
+
+Restart Claude Code (or `/mcp` reconnect) so it re-spawns the server. To switch back to the published release, drop `--from …` so `uvx` resolves the package from PyPI again.
+
 ### Windows: Scribus path
 
 If Scribus isn't at the default path, point the server at it:
