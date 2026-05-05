@@ -423,10 +423,23 @@ def _block_main_thread_dispatch():
     state = getattr(scribus, _STATE_KEY, {})
     state["alive"] = True
     setattr(scribus, _STATE_KEY, state)
+    # ``scribus.progressReset()`` calls ``QApplication::processEvents()``
+    # in C++, so every idle tick we pump Qt's queue and keep the GUI
+    # alive (otherwise the main window paints black until a message
+    # arrives and the dispatcher yields). The progress bar is invisible
+    # in normal operation, so resetting it ~10x/sec is a no-op for the
+    # user. Falls back to a no-op if a future Scribus build drops the
+    # function or it raises.
+    _pump = getattr(scribus, "progressReset", None)
     while state.get("alive", True):
         try:
-            conn, msg = _inbox.get(timeout=0.5)
+            conn, msg = _inbox.get(timeout=0.1)
         except _queue.Empty:
+            if _pump is not None:
+                try:
+                    _pump()
+                except Exception:
+                    pass
             state = getattr(scribus, _STATE_KEY, state)
             continue
         try:

@@ -31,6 +31,8 @@ def register(mcp, ctx: ServerCtx) -> None:
         label_font_size_pt: float = 8.0,
         label_height_mm: float = 5.0,
         label_offset_mm: float = 5.0,
+        label_rows: int | str = "auto",
+        label_row_gap_mm: float = 2.0,
         date_color: str = "muted",
         date_font_size_pt: float = 7.0,
         date_shade: int | None = None,
@@ -68,6 +70,19 @@ def register(mcp, ctx: ServerCtx) -> None:
         ``position`` values are unevenly spaced (e.g. yearly markers
         with a one-year gap next to a three-year gap).
 
+        ``label_rows`` (default ``"auto"``) lets adjacent items
+        alternate between N stacked y-rows so each label competes only
+        with the one ``label_rows`` items away — roughly ``label_rows×``
+        more horizontal slot per label. ``"auto"`` estimates each
+        label's rendered width from its character count and the font
+        size; if any label overflows its single-row slot, the timeline
+        bumps to 2 rows automatically. Pass an explicit integer (1..4)
+        to override — e.g. ``label_rows=1`` to force a single line and
+        accept the truncation, or ``label_rows=3`` for very dense
+        timelines. Far-row labels render
+        ``label_height_mm + label_row_gap_mm`` higher than near-row
+        ones, with longer connectors.
+
         ``bottom_margin_mm`` is visual breathing room added to the
         reported bbox below the date row — bumping it stops the next
         band (or the page footer) from sitting flush against the dates.
@@ -82,6 +97,58 @@ def register(mcp, ctx: ServerCtx) -> None:
             if "position" not in it or "label" not in it:
                 return {"ok": False, "error": f"item {i} missing 'position' or 'label'"}
 
+        # ``label_rows`` accepts an int (1..4) or the string ``"auto"``.
+        # Auto-detect picks 1 row when every label fits its same-row
+        # slot, else 2 (the typical "two-height" stagger). Callers can
+        # still force more rows by passing an explicit int.
+        positions = [max(0.0, min(1.0, float(it["position"]))) for it in items]
+
+        def _est_label_width_mm(text: str) -> float:
+            # 0.62 em per char matches the empirical advance for DejaVu
+            # Sans Book — same factor the kpi_tile autofit lands on.
+            # Capital-leading words like "Bluetooth" or "LTS v3.7" run
+            # wider than the 0.55 average; underestimating means auto
+            # leaves the timeline at 1 row when 2 rows are needed.
+            return len(text) * 0.62 * float(label_font_size_pt) / 2.834645669
+
+        def _slot_avail_mm(i: int, rows: int) -> float:
+            row = i % rows
+            left = float("inf")
+            for j in range(i - 1, -1, -1):
+                if j % rows == row:
+                    left = (positions[i] - positions[j]) * float(width_mm)
+                    break
+            right = float("inf")
+            for j in range(i + 1, len(positions)):
+                if j % rows == row:
+                    right = (positions[j] - positions[i]) * float(width_mm)
+                    break
+            avail = min(left, right)
+            if avail == float("inf"):
+                avail = float(width_mm) * 0.6
+            return min(40.0, max(8.0, avail * 0.95))
+
+        def _fits_at_rows(rows: int) -> bool:
+            for i, it in enumerate(items):
+                if _est_label_width_mm(str(it["label"])) > _slot_avail_mm(i, rows):
+                    return False
+            return True
+
+        if isinstance(label_rows, str):
+            if label_rows.strip().lower() != "auto":
+                return {
+                    "ok": False,
+                    "error": (
+                        f"label_rows must be an int 1..4 or the string 'auto' "
+                        f"(got {label_rows!r})"
+                    ),
+                }
+            label_rows = 1 if _fits_at_rows(1) else 2
+        else:
+            if not 1 <= int(label_rows) <= 4:
+                return {"ok": False, "error": "label_rows must be between 1 and 4"}
+            label_rows = int(label_rows)
+
         # Resolve vertical placement — exactly one of {top_y_mm, axis_y_mm}.
         if top_y_mm is None and axis_y_mm is None:
             return {
@@ -93,8 +160,17 @@ def register(mcp, ctx: ServerCtx) -> None:
                 "ok": False,
                 "error": "pass only one of top_y_mm or axis_y_mm, not both",
             }
+        # Total label-stack height when label_rows>1: each extra row
+        # stacks an additional (label_height_mm + label_row_gap_mm)
+        # above the near-row baseline.
+        rows_extra = (label_rows - 1) * (float(label_height_mm) + float(label_row_gap_mm))
         if top_y_mm is not None:
-            axis_y = float(top_y_mm) + float(label_offset_mm) + float(label_height_mm)
+            axis_y = (
+                float(top_y_mm)
+                + float(label_offset_mm)
+                + float(label_height_mm)
+                + rows_extra
+            )
         else:
             axis_y = float(axis_y_mm)
         # Internal alias used below — was named y_mm before the rename.
@@ -115,16 +191,32 @@ def register(mcp, ctx: ServerCtx) -> None:
 
         n = len(items)
         # Per-item label width — bounded by the distance to each
-        # neighbour along the axis. With evenly spaced items this matches
-        # the previous uniform ``slot_w * 0.95`` behaviour. With uneven
-        # spacing (e.g. release history where 2025 sits one year before
-        # 2026 but 2016→2019 spans three) it prevents a wide label like
-        # "v4.x cycle" from running into a near neighbour like "today".
-        positions = [max(0.0, min(1.0, float(it["position"]))) for it in items]
+        # *same-row* neighbour along the axis. With evenly spaced items
+        # and label_rows=1 this matches the previous uniform slot_w
+        # behaviour. With label_rows=2, items 0,2,4 share row 0 and
+        # items 1,3,5 share row 1, so each label only competes with the
+        # label two markers away — roughly 2x more horizontal slot.
+        # Item ``i``'s row is ``i % label_rows``; far-row labels stack
+        # higher above the axis with a longer connector.
+        item_rows = [i % label_rows for i in range(n)]
+
+        def _same_row_neighbour(i: int, direction: int) -> float:
+            """Return horizontal distance (mm) to the nearest same-row
+            neighbour in ``direction`` (-1=left, +1=right). Falls back
+            to ``inf`` when no same-row neighbour exists on that side
+            (i.e. the item is at a row's leading or trailing edge)."""
+            row = item_rows[i]
+            j = i + direction
+            while 0 <= j < n:
+                if item_rows[j] == row:
+                    return abs(positions[j] - positions[i]) * width_mm
+                j += direction
+            return float("inf")
+
         label_widths: list[float] = []
-        for i, p in enumerate(positions):
-            left_dist = (p - positions[i - 1]) * width_mm if i > 0 else float("inf")
-            right_dist = (positions[i + 1] - p) * width_mm if i < n - 1 else float("inf")
+        for i in range(n):
+            left_dist = _same_row_neighbour(i, -1)
+            right_dist = _same_row_neighbour(i, +1)
             avail = min(left_dist, right_dist)
             if avail == float("inf"):
                 avail = width_mm * 0.6
@@ -141,14 +233,27 @@ def register(mcp, ctx: ServerCtx) -> None:
         # Dates: list of (x, y, w, h, text)
         dates_spec = []
 
+        # Each row r above the axis lives at:
+        #   label_y(r) = axis_y - label_offset_mm - (r+1)*label_h - r*gap
+        # so row 0 is closest to the axis and higher rows stack above.
+        row_step = float(label_height_mm) + float(label_row_gap_mm)
+
+        def _label_y_for_row(row: int) -> float:
+            return y_mm - float(label_offset_mm) - float(label_height_mm) - row * row_step
+
         for idx, it in enumerate(items):
             pos = positions[idx]
             tx = x_mm + pos * width_mm
             label_w = label_widths[idx]
+            row = item_rows[idx]
+            label_y = _label_y_for_row(row)
 
             if show_connectors:
+                # Connector reaches up to the bottom edge of the label
+                # frame for this item's row (so far-row markers get a
+                # taller hairline).
                 connectors_spec.append(
-                    (tx, y_mm - marker_radius_mm, tx, y_mm - label_offset_mm + 0.5)
+                    (tx, y_mm - marker_radius_mm, tx, label_y + float(label_height_mm) - 0.5)
                 )
 
             markers_spec.append(
@@ -162,7 +267,6 @@ def register(mcp, ctx: ServerCtx) -> None:
                 )
             )
 
-            label_y = y_mm - label_offset_mm - label_height_mm
             # Center the label on the marker, but clamp so it doesn't
             # extend past the timeline's horizontal span — otherwise the
             # first/last labels poke into the page margins.
@@ -247,7 +351,12 @@ _value = {{
         # breathing room at the bottom so callers chaining via
         # PageCursor don't slam the next band (or a page footer) right
         # against the date row.
-        bbox_top = axis_y - label_offset_mm - label_height_mm
+        bbox_top = (
+            axis_y
+            - float(label_offset_mm)
+            - float(label_height_mm)
+            - rows_extra
+        )
         bbox_bottom = axis_y + date_offset_mm + 5.0 + float(bottom_margin_mm)
         return {
             "ok": True,
@@ -256,6 +365,10 @@ _value = {{
             "connectors": out.get("connectors", []),
             "labels": out.get("labels", []),
             "dates": out.get("dates", []),
+            # Surface the resolved row count so callers passing
+            # ``label_rows="auto"`` can see whether single-row fit or
+            # the timeline was bumped to two-row staggered.
+            "label_rows": label_rows,
             "bbox": {
                 "x_mm": x_mm,
                 "y_mm": bbox_top,

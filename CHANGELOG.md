@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] — 2026-05-05
+
+Two follow-ups to 1.1.3 driven by a fresh end-to-end test against the
+Scribus 1.7.3 AppImage:
+
+### Fixed
+
+- **AppImage window stayed black until a tool call.** When PyQt isn't
+  installed in the running Scribus's Python (the case for the
+  bundled-everything 1.7.3 AppImage), the bridge falls back to a
+  blocking dispatch loop that holds the main thread — Qt's event loop
+  never gets a chance to paint, so the main window appeared black
+  until a Scripter call yielded mid-tick. The bridge now calls
+  ``scribus.progressReset()`` on each idle cycle (every 100 ms),
+  which internally calls ``QApplication::processEvents()`` so Qt
+  flushes its paint + input queue. Side effect: the progress bar is
+  reset to 0 ~10×/sec, which is invisible during normal operation.
+  ([src/scribus_mcp/bridge/scribus_mcp_bridge.spy](src/scribus_mcp/bridge/scribus_mcp_bridge.spy))
+
+### Added
+
+- **`create_timeline(label_rows="auto" | int)`** ([src/scribus_mcp/tools/patterns/timeline.py](src/scribus_mcp/tools/patterns/timeline.py)).
+  Adjacent items can stagger across N stacked y-rows so each label
+  competes only with the same-row neighbour ``label_rows`` markers
+  away — roughly ``label_rows×`` more horizontal slot per label. The
+  new ``"auto"`` default estimates each label's rendered width from
+  its character count and the font size; if any label overflows its
+  single-row slot, the timeline bumps to 2 rows automatically.
+  Callers can override with an explicit ``int`` (1..4) — pass
+  ``label_rows=1`` to force a single line and accept the truncation,
+  or ``label_rows=3`` for very dense timelines. The result dict
+  surfaces ``label_rows`` so callers can see whether auto bumped.
+  Fixes the "v1.0 — first rLeolenags-teerm support"-style collisions
+  in the "A DECADE OF RELEASES" timeline.
+
+### Notes
+
+- 128 unit tests pass (was 119; +9 in `tests/test_timeline_label_rows.py`
+  covering the row layout, same-row neighbour width bounding, the
+  bbox grow, the auto-detect short-vs-long label paths, and explicit
+  override + validation).
+
+[1.1.4]: https://github.com/caewa/scribus-mcp/releases/tag/v1.1.4
+
 ## [1.1.3] — 2026-05-05
 
 Bug-fix: 1.1.2's AppImage wiring works (Scribus 1.7.3 actually
