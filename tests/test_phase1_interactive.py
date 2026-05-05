@@ -1856,6 +1856,151 @@ def test_1P2_data_merge_csv_prompt(mcp):
     assert msgs is not None
 
 
+# ----- Section 1.SR — Shape regression: round-trip-through-save_document --
+# Regression for the "create_rectangle silently drops fill_color" bug.
+# Each test creates a styled shape, saves to a tmp SLA, parses the XML
+# and asserts the requested PCOLOR / PCOLOR2 actually landed on disk —
+# the previous version returned ok=true with the args silently filtered
+# out, so the rect's PAGEOBJECT had PCOLOR="Black" regardless of input.
+# Uses the module-level shared doc and the "Brand" color defined in
+# test_1I2; each test deletes its shape afterwards to keep the doc
+# clean for later tests.
+
+
+def _save_and_read(call, tmp_path, name):
+    sla = tmp_path / f"{name}.sla"
+    r = asyncio.run(call("save_document_as", path=str(sla), mode="interactive"))
+    assert r.get("ok") is True, r.get("error")
+    return sla.read_text(encoding="utf-8")
+
+
+def test_1SR1_create_rectangle_fill_color_lands_in_sla(call, tmp_path):
+    r = asyncio.run(
+        call(
+            "create_rectangle",
+            x_mm=10, y_mm=200, width_mm=30, height_mm=30,
+            fill_color="Brand",
+            line_color="None",
+            name="reg_rect_brand",
+            mode="interactive",
+        )
+    )
+    assert r.get("ok") is True, r.get("error")
+    try:
+        xml = _save_and_read(call, tmp_path, "reg_rect")
+        assert 'PCOLOR="Brand"' in xml, "create_rectangle dropped fill_color"
+        assert 'PCOLOR2="None"' in xml, "create_rectangle didn't honour line_color='None'"
+    finally:
+        asyncio.run(call("delete_object", name="reg_rect_brand", mode="interactive"))
+
+
+def test_1SR2_create_ellipse_fill_color_lands_in_sla(call, tmp_path):
+    r = asyncio.run(
+        call(
+            "create_ellipse",
+            x_mm=50, y_mm=200, width_mm=30, height_mm=30,
+            fill_color="Brand",
+            line_color="None",
+            name="reg_ellipse_brand",
+            mode="interactive",
+        )
+    )
+    assert r.get("ok") is True, r.get("error")
+    try:
+        xml = _save_and_read(call, tmp_path, "reg_ellipse")
+        assert 'PCOLOR="Brand"' in xml
+        assert 'PCOLOR2="None"' in xml
+    finally:
+        asyncio.run(call("delete_object", name="reg_ellipse_brand", mode="interactive"))
+
+
+def test_1SR3_create_polygon_fill_color_lands_in_sla(call, tmp_path):
+    r = asyncio.run(
+        call(
+            "create_polygon",
+            points_mm=[100, 200, 130, 200, 115, 230],
+            fill_color="Brand",
+            line_color="None",
+            name="reg_poly_brand",
+            mode="interactive",
+        )
+    )
+    assert r.get("ok") is True, r.get("error")
+    try:
+        xml = _save_and_read(call, tmp_path, "reg_poly")
+        assert 'PCOLOR="Brand"' in xml
+        assert 'PCOLOR2="None"' in xml
+    finally:
+        asyncio.run(call("delete_object", name="reg_poly_brand", mode="interactive"))
+
+
+def test_1SR4_create_line_color_lands_in_sla(call, tmp_path):
+    # Lines have no fill — the stroke color lands in PCOLOR2.
+    r = asyncio.run(
+        call(
+            "create_line",
+            x1_mm=10, y1_mm=240, x2_mm=200, y2_mm=240,
+            line_color="Brand",
+            line_width_pt=1.4,
+            name="reg_line_brand",
+            mode="interactive",
+        )
+    )
+    assert r.get("ok") is True, r.get("error")
+    try:
+        xml = _save_and_read(call, tmp_path, "reg_line")
+        assert 'PCOLOR2="Brand"' in xml, "create_line dropped line_color"
+    finally:
+        asyncio.run(call("delete_object", name="reg_line_brand", mode="interactive"))
+
+
+def test_1SR5_create_rectangle_no_styling_args_unchanged(call, tmp_path):
+    """Sanity: when no styling args are passed, no setFillColor /
+    setLineColor calls are emitted — the rect uses Scribus defaults
+    (PCOLOR="Black" stays, PCOLOR2="Black" stays). This pins the
+    no-behaviour-change-when-omitted promise."""
+    r = asyncio.run(
+        call(
+            "create_rectangle",
+            x_mm=10, y_mm=250, width_mm=10, height_mm=10,
+            name="reg_rect_default",
+            mode="interactive",
+        )
+    )
+    assert r.get("ok") is True, r.get("error")
+    try:
+        xml = _save_and_read(call, tmp_path, "reg_rect_default")
+        # The rect must exist and not have been styled into Brand by
+        # accident (regression in the other direction).
+        assert 'ANNAME="reg_rect_default"' in xml
+        assert 'PCOLOR="Brand"' not in xml.split('ANNAME="reg_rect_default"')[1].split(">")[0]
+    finally:
+        asyncio.run(call("delete_object", name="reg_rect_default", mode="interactive"))
+
+
+def test_1SR6_create_document_pages_argument_honored(call, tmp_path):
+    """Regression: create_document(pages=N) was silently ignored before
+    the arg was declared. Asserts ANZPAGES="3" lands in the saved SLA."""
+    # Use a fresh doc to avoid colliding with the module-level shared one.
+    asyncio.run(call("close_document", mode="interactive"))
+    try:
+        r = asyncio.run(
+            call("create_document", pages=3, mode="interactive")
+        )
+        assert r.get("ok") is True, r.get("error")
+        sla = tmp_path / "multi.sla"
+        r = asyncio.run(call("save_document_as", path=str(sla), mode="interactive"))
+        assert r.get("ok") is True, r.get("error")
+        xml = sla.read_text(encoding="utf-8")
+        assert 'ANZPAGES="3"' in xml, "create_document.pages was ignored"
+    finally:
+        # Restore a fresh doc so the cleanup test (zzz) can close it
+        # cleanly. The module-level shared doc is gone at this point;
+        # reopening just to keep the closing semantics intact.
+        asyncio.run(call("close_document", mode="interactive"))
+        asyncio.run(call("create_document", mode="interactive"))
+
+
 # ----- Section 1.R — error paths -------------------------------------------
 
 
