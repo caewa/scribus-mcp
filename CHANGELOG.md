@@ -5,6 +5,138 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-05-05
+
+Driven by issues seen in a follow-up LLM-produced brief on top of 1.0.1.
+Adds a document-wide palette layer + several quality-of-life fixes
+across the high-traffic patterns. Backwards-compatible: scripts that
+pass explicit colors are unaffected; the changed defaults only matter
+when a script *omitted* the color argument and didn't define the
+canonical palette role names.
+
+### Added
+
+- **Palette roles** ([src/scribus_mcp/tools/palette.py](src/scribus_mcp/tools/palette.py)).
+  Every color slot in patterns + layouts now defaults to one of the
+  canonical role names — `primary`, `accent`, `surface`, `ink`,
+  `muted`, `warning`, `success`, `subtle`. Define those names with
+  `define_color_rgb` / `define_color_cmyk` once and every later
+  `create_card_grid`, `create_callout_box`, `create_kpi_tile`,
+  `create_section_header`, `create_hero_band`, `create_timeline`,
+  `create_comparison_table`, `create_radar_chart`, `create_bar_chart`,
+  `create_pie_chart`, `create_numbered_steps`, `create_sidebar_layout`,
+  `create_table_of_contents`, etc. inherits the palette without
+  restating the color on every call. Per-call literals still win —
+  pass `accent_color="Brand Coral"` to override one slot.
+  Documented in
+  [doc/BEST_PRACTICES.md#palette-roles](doc/BEST_PRACTICES.md#palette-roles--define-once-every-tool-uses-them).
+- **`list_palette_roles` tool** lists the canonical role names so the
+  LLM can introspect the contract before defining colors.
+- **`get_scribus_version` tool** ([src/scribus_mcp/tools/document.py](src/scribus_mcp/tools/document.py))
+  returns `{major, minor, patch, version, version_string,
+  is_17_or_newer}`. The internal version probe drove version-gated
+  features (`create_qr_code_block` requires 1.7+) but was never
+  exposed to the MCP client; LLMs can now branch their workflow on
+  the running Scribus's capabilities up front.
+- **Shape primitives accept fill / line styling at creation time.**
+  `create_rectangle`, `create_ellipse`, `create_line`,
+  `create_polygon`, `create_polyline`, `create_bezier_line` gained
+  `fill_color`, `fill_shade`, `line_color`, `line_width_pt` (palette
+  roles accepted). `line_color="None"` suppresses the default 1pt
+  black stroke; omitting the args keeps the previous create-only
+  behaviour. Closes the silent-arg-drop bug where an LLM passed
+  `fill_color="Brand"`, got `ok: true` back, and the shape rendered
+  with PCOLOR="Black" because the kwarg wasn't declared on the tool.
+  ([src/scribus_mcp/tools/shapes.py](src/scribus_mcp/tools/shapes.py))
+- **`create_document(pages: int = 1)`** is now honored (1..1000 range).
+  The parameter was always plumbed through to Scripter's `newDocument`
+  but never declared on the tool, so calls like
+  `create_document(pages=5)` returned `ok: true` with a 1-page doc.
+- **Per-backend palette cache** with seed-on-define + invalidate-on-
+  document-lifecycle hooks. `getColorNames` is probed at most once per
+  pattern call; the cache absorbs every later
+  `define_color_rgb` / `define_color_cmyk` and is dropped on
+  `create_document` / `open_document` / `close_document` /
+  `revert_document` / `delete_color`.
+
+### Fixed
+
+- **`create_kpi_tile` still wrapped `"Apache 2.0"` onto two lines.**
+  The 1.0.1 horizontal-fit pass used a 0.55 average-glyph-advance
+  estimate; DejaVu Sans (the Scribus default) is closer to 0.56 for
+  mixed text and noticeably wider for capital-leading words. Bumped
+  the factor to 0.62 with a 0.93 safety multiplier on the inner width
+  — covers DejaVu and every common sans-serif we ship without forcing
+  further shrink on short numeric values like `"15.2k"` / `"177"`.
+- **`create_timeline` labels collided when items were unevenly
+  spaced.** The previous implementation used a single uniform slot
+  width derived from `width_mm / (n - 1)`; on a release-history
+  timeline where 2025 sat one year before 2026 next to a three-year
+  gap from 2016→2019, the `"v4.x cycle"` and `"today"` labels overran
+  each other. Per-label width is now bounded by the distance to each
+  neighbour, so labels stay separated regardless of `position`
+  distribution.
+- **`create_timeline` reported a bbox flush against the date row.**
+  The returned `bbox` ended exactly at the bottom of the date frames,
+  so callers chaining via `PageCursor` placed the next band (or the
+  page footer) right against the dates. New `bottom_margin_mm`
+  parameter (default 3 mm) reserves visual breathing room in the
+  reported bbox.
+- **`create_section_header` accent rule sat too far below the title.**
+  Default `title_height_mm` (9 mm) over-reserved descender room for
+  the 16 pt title and `rule_offset_mm` (1 mm) added another mm on top
+  — produced a ~4 mm visible gap between baseline and rule that read
+  as a detached underline. Tightened defaults to 7 mm / 0.5 mm so the
+  rule hugs the title; callers can still pass larger values for an
+  airy layout.
+
+### Changed
+
+- **`auto_height` now defaults to `True` on `create_card_grid` and
+  `create_callout_box`.** The 1.0.1 release shipped the feature but
+  kept the default `False`, so the same brief still produced cards
+  either overflowing (4-up grid where bodies were too long for the
+  fixed cell) or trailing a tall whitespace gap (3-up / 2-up grid
+  where bodies were shorter than the fixed cell). Cards now adapt to
+  their content by default; pass `auto_height=False` only when you
+  specifically want the caller-provided `height_mm` honoured verbatim.
+- **Color slot defaults flip from `"Black"` to role names.** Slots
+  that conventionally tinted Black (`fill_shade=8` for cards,
+  `fill_shade=12` for KPIs, `axis_shade=50` for timelines, etc.) keep
+  that conventional shade *only when the role is undefined*. When the
+  role resolves, tools draw at full shade so the LLM sees the exact
+  hue it defined. Caller-provided shades always win — pass
+  `fill_shade=20` to override either path.
+- **Shade parameters now take `int | None`** as their type — `None`
+  is the new "let the resolver decide" sentinel; an explicit int still
+  pins the shade.
+
+### Documentation
+
+- New "Palette roles — define once, every tool uses them" section in
+  [doc/BEST_PRACTICES.md](doc/BEST_PRACTICES.md), with the role table,
+  a typical opener snippet, and a callout for the common pitfall of
+  defining custom color names (`ZephyrPurple`) instead of the
+  canonical roles (silently makes every tool with an omitted color
+  argument fall back to Black).
+- README: new "Wire Claude Code at a local checkout" sub-section under
+  Dev mode for testing local branches via `uvx --from <path>`. (Also
+  fixes the easy-to-miss trailing `scribus-mcp` arg the line
+  continuation had hidden.)
+
+### Notes
+
+- 110 unit tests pass (was 88; +22 across `tests/test_palette.py`,
+  `tests/test_shape_styling.py`, plus 3 in `tests/test_version_gate.py`
+  for the new MCP tool).
+- 6 new Phase 1 (live) regression tests in `tests/test_phase1_interactive.py`
+  section 1.SR — round-trip-through-save_document, asserting
+  `PCOLOR="Brand"` actually lands in the saved SLA for each affected
+  shape primitive. Gated by `SCRIBUS_MCP_LIVE=1`.
+- Ruff clean across `src/` and `tests/`.
+
+[1.1.0]: https://github.com/caewa/scribus-mcp/releases/tag/v1.1.0
+
 ## [1.0.1] — 2026-05-04
 
 Bug-fix release driven by issues seen in real LLM-produced documents.
