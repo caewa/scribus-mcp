@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] — 2026-05-05
+
+Small follow-up to 1.1.0 — adds a knob the launcher was missing for
+hosts that have Scribus 1.6 installed but want the 1.7.x AppImage.
+
+### Added
+
+- **`SCRIBUS_MCP_IGNORE_HOST_SCRIBUS=1`** ([src/scribus_mcp/config.py](src/scribus_mcp/config.py),
+  [src/scribus_mcp/backends/_launcher.py](src/scribus_mcp/backends/_launcher.py))
+  skips every host-binary lookup (`SCRIBUS_BIN`, `$PATH`, the
+  well-known install paths, the AppImage glob in `~/Applications/`)
+  and forces the AppImage path. Pair with `SCRIBUS_MCP_AUTO_APPIMAGE=1`.
+  Use case: distro ships Scribus 1.6 (Debian 13, Ubuntu 24.04) but the
+  user wants 1.7.x for the full feature surface
+  (`create_qr_code_block`, …) — without IGNORE_HOST, the host 1.6
+  always wins because `_resolve_scribus_bin` finds it on `$PATH`
+  before AUTO_APPIMAGE kicks in.
+
+### Fixed
+
+- Setting IGNORE_HOST without AUTO_APPIMAGE now reports the
+  configuration error directly ("set AUTO_APPIMAGE or unset
+  IGNORE_HOST") instead of the ambiguous "binary not found at ..."
+  message.
+
+### Notes
+
+- 113 unit tests pass (was 110; +3 for the new env var → Config wiring,
+  the resolve-skipped path, and the misconfiguration error).
+
+[1.1.1]: https://github.com/caewa/scribus-mcp/releases/tag/v1.1.1
+
 ## [1.1.0] — 2026-05-05
 
 Driven by issues seen in a follow-up LLM-produced brief on top of 1.0.1.
