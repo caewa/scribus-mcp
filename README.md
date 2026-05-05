@@ -214,11 +214,10 @@ If you just want to test a local branch against Claude Code without installing i
 
 ```bash
 claude mcp remove scribus -s user 2>/dev/null
-claude mcp add scribus -s user -e SCRIBUS_MCP_AUTO_APPIMAGE=1 -- \
-  uvx --from /absolute/path/to/scribus-mcp scribus-mcp
+claude mcp add scribus -s user -e SCRIBUS_MCP_AUTO_APPIMAGE=1 -- uvx --from /absolute/path/to/scribus-mcp scribus-mcp
 ```
 
-Restart Claude Code (or `/mcp` reconnect) so it re-spawns the server. To switch back to the published release, drop `--from …` so `uvx` resolves the package from PyPI again.
+Verify with `claude mcp list` — the line should end with `✓ Connected`. Restart Claude Code (or `/mcp` reconnect) so it re-spawns the server. To switch back to the published release, drop the `--from /absolute/path/to/scribus-mcp` so `uvx` resolves the package from PyPI again — leave the trailing `scribus-mcp` in place.
 
 ### Windows: Scribus path
 
