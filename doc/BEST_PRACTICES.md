@@ -147,6 +147,17 @@ keeps the conventional shade — e.g. card fills stay at `Black @ 8%` for
 a faint grey background. So define roles at the **final hue you want
 drawn**, not a base color the tool will tint.
 
+> **Common pitfall — name your colors with the canonical role names.**
+> If you call `define_color_rgb(name="ZephyrPurple", …)` and skip
+> `primary` / `accent` / `surface` / `ink` / `muted`, every tool whose
+> color slot you *don't* explicitly override will fall back to `"Black"`.
+> Visible symptom: hero bands render near-black, numbered-step badges
+> render black, card accent stripes render black — even though the
+> document palette is full of beautiful brand colors. Either (a) name
+> the role colors directly (`name="primary"`) or (b) pass them
+> explicitly on every call (`fill_color="ZephyrPurple"`). The first is
+> dramatically less typing.
+
 ## Markdown handles inline emphasis automatically
 
 `import_markdown` walks inline tokens, strips `**` / `*` / `` ` ``

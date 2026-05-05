@@ -38,9 +38,14 @@ def register(mcp, ctx: ServerCtx) -> None:
         orientation: Annotated[str, Field(pattern="^(portrait|landscape)$")] = "portrait",
         first_page_number: int = 1,
         facing_pages: bool = False,
+        pages: Annotated[int, Field(ge=1, le=1000)] = 1,
         mode: Mode = "auto",
     ) -> dict:
-        """Create a new Scribus document. Coordinates are in millimeters."""
+        """Create a new Scribus document. Coordinates are in millimeters.
+
+        ``pages`` is the initial page count (1..1000). Use ``add_page``
+        later to insert more or ``delete_page`` to drop them.
+        """
         backend = await get_backend(ctx, mode)
         # newDocument(size, margins, orientation, firstPageNum, unit, facingPages, firstPageOrder, numPages)
         # size = (w, h), margins = (left, right, top, bottom)
@@ -56,7 +61,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             UNIT_MM,
             1 if facing_pages else FACING_PAGES_NO,
             FIRST_PAGE_LEFT,
-            1,
+            int(pages),
         )
         if result.ok:
             invalidate_palette(backend)
