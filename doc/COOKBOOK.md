@@ -15,7 +15,8 @@ For an LLM driving the MCP from a Claude/Anthropic session, the equivalent rule 
 5. [Code-walkthrough document](#5-code-walkthrough-document)
 6. [PDF form / interactive document](#6-pdf-form--interactive-document)
 7. [Custom-font document](#7-custom-font-document)
-8. [Recurring patterns reference](#8-recurring-patterns-reference)
+8. [Pick the right pattern for your data](#8-pick-the-right-pattern-for-your-data) — decision guide
+9. [Recurring patterns reference](#9-recurring-patterns-reference)
 
 ---
 
@@ -387,13 +388,77 @@ For headless CI: set `SCRIBUS_MCP_EXTRA_FONT_PATHS=/path/to/fonts` and every spa
 
 ---
 
-## 8. Recurring patterns reference
+## 8. Pick the right pattern for your data
+
+Decision rules — match the **shape of your content** to the tool. Don't reach for primitives when one of these does the composition for you.
+
+### One number, framed
+
+| You have… | Use |
+|---|---|
+| One stat with caption + delta, in a tile | `create_kpi_tile` |
+| 3–4 stats side-by-side with same shape | `create_kpi_row` |
+| **One headline number that needs decomposition** (62 % / 16 % / 22 %) | `create_dark_kpi_band` — left: big number; right: breakdown rows w/ progress bars |
+
+### Comparison across N items
+
+| Items differ by… | Use |
+|---|---|
+| One row of values (bar/pie/radar) | `create_bar_chart` / `create_pie_chart` / `create_radar_chart` |
+| Multiple datasets to overlay (Plan vs Actual, 2024 vs 2025) | Same tools with `datasets=[…]` — see [recipe 4](#4-comparison-report-multi-dataset) |
+| Tabular comparison (rows × cols) | `create_comparison_table` — pass `rows=[{cells, highlight: True}]` to surface the recommended option with an accent stripe |
+
+### Tall cards stacked across the page (3 columns of opinion)
+
+| The pillar carries… | Use |
+|---|---|
+| **Bullets + dark anchor footer** ("ANCHOR: Team / product") | `create_axes_strip` — colored header on top, anchor strap on bottom |
+| **3 hard proofs (number + label) + prose body**, austere | `create_pillar_strip` — white card, accent border, separator, proof rows, body |
+| **Title + body + ONE bottom strap** with the headline metric | `create_highlight_card_row` (2-3 cards, ~60 mm tall) |
+| Just a 2×N feature grid, body of variable length | `create_card_grid` (default `auto_height=True`) |
+
+### Time / sequence
+
+| Shape | Use |
+|---|---|
+| Horizontal milestone line (events at positions) | `create_timeline` — pass `label_rows="auto"` (default) so dense labels stagger across two heights |
+| Vertical numbered steps (Getting Started) | `create_numbered_steps` |
+
+### Page chrome / structure
+
+| Use | When |
+|---|---|
+| `create_hero_band` | Page opener: big title + subtitle band |
+| `create_section_header` | "01 — OVERVIEW / What is X" eyebrow + title + thin rule |
+| `create_two_column_text` | Body prose at column width |
+| `create_sidebar_layout` | Narrow sidebar (notes, metadata) + wide main column |
+| `create_image_caption` | Image with figure caption |
+
+### Annotation marks
+
+| Use | When |
+|---|---|
+| `create_callout_box` | Tip / warning / pull-quote — bordered shaded box |
+| `create_dot_label` | Filled circle with text inside (status / step badge) |
+| `create_numbered_badge` | Numbered circle, pixel-perfect digit centering |
+| `create_qr_code_block` | QR / barcode with caption |
+| `create_code_sample` | Syntax-highlighted code block |
+
+> **Defaults follow the palette**: `primary`, `accent`, `surface`, `ink`, `muted` (and `warning` / `success` / `subtle`). Define those role colors with `define_color_rgb` once at the top of your script, and every tool above adopts them automatically — see [BEST_PRACTICES § Palette roles](BEST_PRACTICES.md#palette-roles--define-once-every-tool-uses-them).
+
+---
+
+## 9. Recurring patterns reference
 
 | Shape you want | Tool to reach for |
 |---|---|
 | 4 stat tiles in a row | `create_kpi_row` |
+| Headline number + breakdown w/ progress bars | `create_dark_kpi_band` |
 | Vertical numbered steps (Getting Started) | `create_numbered_steps` |
 | 2×N grid of feature cards | `create_card_grid` |
+| 3-axes tall cards w/ colored header + anchor footer | `create_axes_strip` |
+| 3-pillars cards w/ proofs + body (white, austere) | `create_pillar_strip` |
+| Series / product cards w/ accent strap footer | `create_highlight_card_row` |
 | Two-column body text | `create_two_column_text` |
 | Image + caption (figure) | `create_image_caption` |
 | Sidebar + main column | `create_sidebar_layout` |
@@ -403,8 +468,8 @@ For headless CI: set `SCRIBUS_MCP_EXTRA_FONT_PATHS=/path/to/fonts` and every spa
 | Highlighted code block | `create_code_sample` |
 | Numbered status badge | `create_numbered_badge` |
 | Filled circle with label | `create_dot_label` |
-| Comparative table | `create_comparison_table` |
-| Horizontal milestone timeline | `create_timeline` |
+| Comparative table (with optional row highlight) | `create_comparison_table` |
+| Horizontal milestone timeline (auto two-row labels) | `create_timeline` |
 | Bar / pie / radar chart | `create_bar_chart` / `create_pie_chart` / `create_radar_chart` |
 | QR code + caption | `create_qr_code_block` |
 | Markdown → page | `import_markdown` |
@@ -430,6 +495,6 @@ For headless CI: set `SCRIBUS_MCP_EXTRA_FONT_PATHS=/path/to/fonts` and every spa
 ## See also
 
 - The two demo scripts dogfood every recipe here:
-  - [scripts/demo-showcase.py](../scripts/demo-showcase.py) — 2 pages, every primitive + pattern + layout
+  - [scripts/demo-showcase.py](../scripts/demo-showcase.py) — 4 pages: dashboard, primitives, strip patterns I (`dark_kpi_band` + `axes_strip`), strip patterns II (`highlight_card_row` + `pillar_strip`)
   - [scripts/demo-explainer.py](../scripts/demo-explainer.py) — 5 pages, full document walkthrough
 - Run them against a live bridge to see what the output looks like; the committed `demo-showcase.{sla,pdf}` and `explainer.{sla,pdf}` are the visual reference. PNG page previews are generated locally on demand (`render_page_to_image`, or the demos' "render previews" step) and aren't committed.

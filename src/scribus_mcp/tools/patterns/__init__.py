@@ -6,13 +6,17 @@ single MCP call. Add a new pattern by dropping a file here that exposes
 """
 
 from scribus_mcp.tools.patterns import (
+    axes_strip,
     bar_chart,
     callout_box,
     code_sample,
     comparison_table,
+    dark_kpi_band,
     dot_label,
+    highlight_card_row,
     kpi_tile,
     pie_chart,
+    pillar_strip,
     qr_code_block,
     radar_chart,
     timeline,
@@ -30,3 +34,7 @@ def register(mcp, ctx) -> None:
     qr_code_block.register(mcp, ctx)
     dot_label.register(mcp, ctx)
     code_sample.register(mcp, ctx)
+    axes_strip.register(mcp, ctx)
+    dark_kpi_band.register(mcp, ctx)
+    pillar_strip.register(mcp, ctx)
+    highlight_card_row.register(mcp, ctx)

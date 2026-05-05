@@ -1,30 +1,43 @@
 """All-features showcase for scribus-mcp.
 
-Run against a live interactive bridge (or change mode='headless' in build_doc).
-Generates a 2-page A4 demo .sla + .pdf that exercises every category of
-tool the MCP exposes.
+Run against a live interactive bridge (or change ``MODE = "headless"``
+below). Generates a 4-page A4 demo .sla + .pdf that exercises every
+category of tool the MCP exposes.
 
   Page 1 — Dashboard: KPI tiles, bar chart, pie chart, radar chart,
                        callout box, timeline, comparison table
   Page 2 — Showcase: shape primitives, gradients, markdown import,
                       QR code, find_and_replace, syntax-highlighted code sample
+  Page 3 — Strip patterns I: dark_kpi_band + axes_strip
+  Page 4 — Strip patterns II: highlight_card_row + pillar_strip
 
-Outputs:
-  C:/Users/William/scribus-mcp/demo-showcase.sla
-  C:/Users/William/scribus-mcp/demo-showcase.pdf
+Run from the repo root with::
+
+    uv run python scripts/demo-showcase.py
+
+Output directory defaults to ``~/scribus-mcp-demo/`` and is created on
+first run; override via ``SCRIBUS_MCP_DEMO_DIR=/some/path``. Files
+written: ``demo-showcase.sla``, ``demo-showcase.pdf``,
+``showcase-p{1..4}.png``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
+from pathlib import Path
 
 from scribus_mcp.layout import PageCursor
 from scribus_mcp.server import build_server
 from scribus_mcp.testing import unwrap
 
-
-SLA = "C:/Users/William/scribus-mcp/demo-showcase.sla"
-PDF = "C:/Users/William/scribus-mcp/demo-showcase.pdf"
+OUT_DIR = Path(
+    os.environ.get("SCRIBUS_MCP_DEMO_DIR")
+    or Path.home() / "scribus-mcp-demo"
+).expanduser()
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+SLA = str(OUT_DIR / "demo-showcase.sla")
+PDF = str(OUT_DIR / "demo-showcase.pdf")
 MODE = "interactive"
 
 
@@ -290,7 +303,7 @@ async def main() -> None:
 
     # Footer at fixed bottom (don't use the cursor — page chrome).
     foot1 = await t("create_text_frame", x_mm=12, y_mm=285, width_mm=186, height_mm=5)
-    await t("set_text", name=foot1["name"], text="page 1 of 2 · scribus-mcp showcase")
+    await t("set_text", name=foot1["name"], text="page 1 of 4 · scribus-mcp showcase")
     await t("set_font_size", name=foot1["name"], size_pt=7)
     await t("set_text_color", name=foot1["name"], color="Subtle")
     await t("set_text_alignment", name=foot1["name"], alignment="center")
@@ -540,11 +553,278 @@ async def main() -> None:
     await t(
         "set_text",
         name=foot2["name"],
-        text="page 2 of 2 · primitives + gradients + markdown + barcode + code_sample + preflight",
+        text="page 2 of 4 · primitives + gradients + markdown + barcode + code_sample + preflight",
     )
     await t("set_font_size", name=foot2["name"], size_pt=7)
     await t("set_text_color", name=foot2["name"], color="Subtle")
     await t("set_text_alignment", name=foot2["name"], alignment="center")
+
+    # ===================== PAGE 3 — Strip patterns I =====================
+    # dark_kpi_band (compact) on top of axes_strip (full-height tall cards
+    # with anchor footer). Both are added in 1.1.5; this page is the
+    # canonical "strategic decomposition" layout.
+    print("\n=== Page 3: Strip patterns I (dark_kpi_band + axes_strip) ===")
+    await t("add_page")
+    await t("goto_page", page_number=3)
+
+    band3 = await t("create_rectangle", x_mm=0, y_mm=0, width_mm=210, height_mm=22)
+    await t("set_fill_color", name=band3["name"], color="Brand Deep")
+    await t("set_line_color", name=band3["name"], color="None")
+
+    h3 = await t("create_text_frame", x_mm=12, y_mm=6, width_mm=190, height_mm=10)
+    await t("set_text", name=h3["name"], text="strip patterns — dark_kpi_band + axes_strip")
+    await t("set_font_size", name=h3["name"], size_pt=18)
+    await t("set_text_color", name=h3["name"], color="White")
+
+    pc3 = PageCursor(x_mm=12, y_mm=30, width_mm=186, default_gap_mm=4)
+
+    # Dark KPI band — headline number + breakdown rows with progress bars.
+    kpi_band_label = await t(
+        "create_text_frame", x_mm=12, y_mm=pc3.y, width_mm=186, height_mm=4
+    )
+    await t("set_text", name=kpi_band_label["name"], text="DARK KPI BAND")
+    await t("set_font_size", name=kpi_band_label["name"], size_pt=7)
+    await t("set_text_color", name=kpi_band_label["name"], color="Brand Deep")
+    pc3.gap(6)
+
+    band_slot = pc3.band(height_mm=42)
+    await t(
+        "create_dark_kpi_band",
+        title="EMPREINTE FLOTTE 2024-2025 — 244 BATEAUX VENDUS",
+        headline_value="117 556",
+        headline_caption="tCO2e total (usage)",
+        breakdown=[
+            {"label": "Carburant",            "value": "73 318 t", "percent": 62, "color": "Warm"},
+            {"label": "Électricité",          "value": "18 402 t", "percent": 16, "color": "Brand Mid"},
+            {"label": "Maintenance / équip.", "value": "25 836 t", "percent": 22, "color": "Accent"},
+        ],
+        x_mm=band_slot["x_mm"],
+        y_mm=band_slot["y_mm"],
+        width_mm=band_slot["width_mm"],
+        fill_color="Ink",
+        title_color="Accent",
+        caption_color="Accent",
+        bar_track_color="Brand Light",
+        bar_track_shade=30,
+    )
+    print("  dark_kpi_band: 3-row breakdown")
+
+    # Axes strip — 3 tall cards with colored header + bullets + dark
+    # anchor footer. Compress to ~205 mm so it fits the remaining
+    # vertical space (we have ~250 mm of content area on this page).
+    axes_label = await t(
+        "create_text_frame", x_mm=12, y_mm=pc3.y, width_mm=186, height_mm=4
+    )
+    await t("set_text", name=axes_label["name"], text="AXES STRIP")
+    await t("set_font_size", name=axes_label["name"], size_pt=7)
+    await t("set_text_color", name=axes_label["name"], color="Brand Deep")
+    pc3.gap(6)
+
+    axes_slot = pc3.band(height_mm=205)
+    await t(
+        "create_axes_strip",
+        items=[
+            {
+                "number": "01",
+                "title": "Bateaux\nconnectés",
+                "lead": "Architecture numérique propriétaire",
+                "items": [
+                    "Routeur central et bus CAN maison",
+                    "Boîtiers IO normalisés sur 3 séries",
+                    "Mise à jour OTA via flotte",
+                    "Données télémétrie 1 Hz remontées",
+                ],
+                "anchor": "MUXEN — Brain 20, Block 8",
+                "anchor_eyebrow": "ANCRAGE",
+                "accent_color": "Brand Deep",
+            },
+            {
+                "number": "02",
+                "title": "Énergie\nbas-carbone",
+                "lead": "Mix solaire + lithium dimensionné",
+                "items": [
+                    "Solaire jusqu'à 6 kWc embarqué",
+                    "Banc lithium 30 kWh",
+                    "Compteur d'énergie temps réel",
+                    "Mode économique automatique",
+                ],
+                "anchor": "MUXEN — Energy stack",
+                "anchor_eyebrow": "ANCRAGE",
+                "accent_color": "Accent",
+            },
+            {
+                "number": "03",
+                "title": "Service\nlong terme",
+                "lead": "10 ans de support garanti",
+                "items": [
+                    "Diagnostic à distance H+24",
+                    "Pièces détachées en stock",
+                    "Mise à niveau soft annuelle",
+                    "Hotline expert MUXEN",
+                ],
+                "anchor": "MUXEN — Care & Support",
+                "anchor_eyebrow": "ANCRAGE",
+                "accent_color": "Warm",
+            },
+        ],
+        x_mm=axes_slot["x_mm"],
+        y_mm=axes_slot["y_mm"],
+        width_mm=axes_slot["width_mm"],
+        height_mm=axes_slot["height_mm"],
+        columns=3,
+        fill_color="Brand Light",
+        fill_shade=18,
+        border_color="Brand Mid",
+        footer_color="Ink",
+    )
+    print("  axes_strip: 3 axes with anchor footers")
+
+    foot3 = await t("create_text_frame", x_mm=12, y_mm=285, width_mm=186, height_mm=5)
+    await t(
+        "set_text",
+        name=foot3["name"],
+        text="page 3 of 4 · dark_kpi_band + axes_strip — strategy decomposition",
+    )
+    await t("set_font_size", name=foot3["name"], size_pt=7)
+    await t("set_text_color", name=foot3["name"], color="Subtle")
+    await t("set_text_alignment", name=foot3["name"], alignment="center")
+
+    # ===================== PAGE 4 — Strip patterns II =====================
+    # highlight_card_row (compact) on top of pillar_strip (claim/evidence/
+    # narrative pillars). Same release as page 3's patterns.
+    print("\n=== Page 4: Strip patterns II (highlight_card_row + pillar_strip) ===")
+    await t("add_page")
+    await t("goto_page", page_number=4)
+
+    band4 = await t("create_rectangle", x_mm=0, y_mm=0, width_mm=210, height_mm=22)
+    await t("set_fill_color", name=band4["name"], color="Brand Deep")
+    await t("set_line_color", name=band4["name"], color="None")
+
+    h4 = await t("create_text_frame", x_mm=12, y_mm=6, width_mm=190, height_mm=10)
+    await t("set_text", name=h4["name"], text="strip patterns — highlight_card_row + pillar_strip")
+    await t("set_font_size", name=h4["name"], size_pt=18)
+    await t("set_text_color", name=h4["name"], color="White")
+
+    pc4 = PageCursor(x_mm=12, y_mm=30, width_mm=186, default_gap_mm=4)
+
+    # Highlight card row — 2 cards with bottom strap surfacing one
+    # headline metric per series.
+    hl_label = await t(
+        "create_text_frame", x_mm=12, y_mm=pc4.y, width_mm=186, height_mm=4
+    )
+    await t("set_text", name=hl_label["name"], text="HIGHLIGHT CARD ROW")
+    await t("set_font_size", name=hl_label["name"], size_pt=7)
+    await t("set_text_color", name=hl_label["name"], color="Brand Deep")
+    pc4.gap(6)
+
+    hl_slot = pc4.band(height_mm=58)
+    await t(
+        "create_highlight_card_row",
+        items=[
+            {
+                "title": "BALI 5.8 et 5.2",
+                "body": (
+                    "100 % MUXEN. Taux de retour très limité. La BALI 5.2 est équipée "
+                    "de la nouvelle génération du Brain, validée sur 18 mois en mer."
+                ),
+                "highlight": "1 000+ boîtiers en flotte",
+            },
+            {
+                "title": "YOT 50",
+                "body": (
+                    "Reprend la même architecture validée que la BALI 5.2 — câblage, "
+                    "boîtiers IO, supervision. Mise en série prévue T3 2026."
+                ),
+                "highlight": "Architecture transposée",
+            },
+        ],
+        x_mm=hl_slot["x_mm"],
+        y_mm=hl_slot["y_mm"],
+        width_mm=hl_slot["width_mm"],
+        height_mm=hl_slot["height_mm"],
+        columns=2,
+        accent_color="Accent",
+    )
+    print("  highlight_card_row: 2 series cards")
+
+    # Pillar strip — 3 austere white pillars with proofs + narrative.
+    pillar_label = await t(
+        "create_text_frame", x_mm=12, y_mm=pc4.y, width_mm=186, height_mm=4
+    )
+    await t("set_text", name=pillar_label["name"], text="PILLAR STRIP")
+    await t("set_font_size", name=pillar_label["name"], size_pt=7)
+    await t("set_text_color", name=pillar_label["name"], color="Brand Deep")
+    pc4.gap(6)
+
+    pillar_slot = pc4.band(height_mm=185)
+    await t(
+        "create_pillar_strip",
+        items=[
+            {
+                "number": "01",
+                "title": "Solidité\ntechnologique",
+                "lead": "Un actif R&D propriétaire",
+                "proofs": [
+                    ["> 1 000",  "boîtiers en flotte"],
+                    ["< 0,5 %",  "taux SAV résiduel"],
+                    ["2 séries", "100 % MUXEN"],
+                ],
+                "body": (
+                    "Plateforme HW propriétaire. 95 % des tickets SAV liés à des "
+                    "facteurs tiers (cellules, capteurs externes). Roadmap soft "
+                    "alignée sur 3 ans."
+                ),
+                "accent_color": "Brand Deep",
+            },
+            {
+                "number": "02",
+                "title": "Industrialisation\nmaîtrisée",
+                "lead": "Un partenariat ACS-Cetex",
+                "proofs": [
+                    ["3 lignes", "production active"],
+                    ["MUXEN-CEM", "compliance EMC"],
+                    ["ISO 9001", "qualité tracée"],
+                ],
+                "body": (
+                    "Partenaire industriel co-investisseur depuis 2022. Capacité "
+                    "scalable à 5 000 unités/an sans CAPEX additionnel."
+                ),
+                "accent_color": "Accent",
+            },
+            {
+                "number": "03",
+                "title": "Service\nlong terme",
+                "lead": "Hotline + diagnostic à distance",
+                "proofs": [
+                    ["10 ans",   "support garanti"],
+                    ["H + 24",   "intervention max"],
+                    ["3 hubs",   "France · Asie · USA"],
+                ],
+                "body": (
+                    "Centre de service multi-zones. Pièces détachées en stock. "
+                    "Mise à niveau soft annuelle gratuite pour la flotte active."
+                ),
+                "accent_color": "Warm",
+            },
+        ],
+        x_mm=pillar_slot["x_mm"],
+        y_mm=pillar_slot["y_mm"],
+        width_mm=pillar_slot["width_mm"],
+        height_mm=pillar_slot["height_mm"],
+        columns=3,
+        fill_color="White",
+    )
+    print("  pillar_strip: 3 pillars with proofs + body")
+
+    foot4 = await t("create_text_frame", x_mm=12, y_mm=285, width_mm=186, height_mm=5)
+    await t(
+        "set_text",
+        name=foot4["name"],
+        text="page 4 of 4 · highlight_card_row + pillar_strip — claim · evidence · narrative",
+    )
+    await t("set_font_size", name=foot4["name"], size_pt=7)
+    await t("set_text_color", name=foot4["name"], color="Subtle")
+    await t("set_text_alignment", name=foot4["name"], alignment="center")
 
     # ===================== Save + Export =====================
     print("\n=== Save + Export ===")
@@ -558,7 +838,7 @@ async def main() -> None:
     import base64
 
     print("\n=== Render previews ===")
-    for pn in (1, 2):
+    for pn in (1, 2, 3, 4):
         out = await mcp.call_tool(
             "render_page_to_image",
             {"page_number": pn, "dpi": 110, "mode": MODE},
@@ -568,7 +848,7 @@ async def main() -> None:
             for c in content:
                 if getattr(c, "type", None) == "image":
                     data = base64.b64decode(getattr(c, "data", ""))
-                    fn = f"C:/Users/William/scribus-mcp/showcase-p{pn}.png"
+                    fn = str(OUT_DIR / f"showcase-p{pn}.png")
                     with open(fn, "wb") as f:
                         f.write(data)
                     print(f"  page {pn}: wrote {fn} ({len(data)} bytes)")
