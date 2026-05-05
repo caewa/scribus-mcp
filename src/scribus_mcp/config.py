@@ -74,6 +74,14 @@ class Config:
     # scribus_mcp/appimage.py). Off by default since it pulls ~140 MB
     # over the network.
     auto_appimage: bool = False
+    # Opt-in: skip every host-binary lookup (SCRIBUS_BIN env, PATH, the
+    # well-known install paths, the AppImage glob in ``~/Applications``)
+    # and go straight to ``auto_appimage``. Useful when the host has an
+    # older Scribus 1.6 installed but the user wants the 1.7.x AppImage
+    # for the full feature surface (qrcodes, …). Pair with
+    # ``auto_appimage=True`` — otherwise the launch fails with a clear
+    # "no binary, no AppImage" error.
+    ignore_host_scribus: bool = False
 
     @classmethod
     def from_env(cls) -> Config:
@@ -93,6 +101,9 @@ class Config:
             use_xvfb=os.environ.get("SCRIBUS_MCP_USE_XVFB", "0") == "1",
             extra_font_paths=extra,
             auto_appimage=os.environ.get("SCRIBUS_MCP_AUTO_APPIMAGE", "0") == "1",
+            ignore_host_scribus=os.environ.get(
+                "SCRIBUS_MCP_IGNORE_HOST_SCRIBUS", "0"
+            ) == "1",
         )
 
 

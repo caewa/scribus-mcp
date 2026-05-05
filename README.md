@@ -139,6 +139,15 @@ SCRIBUS_MCP_AUTO_APPIMAGE=1 scribus-mcp
 
 Either way, the AppImage lands at `~/Applications/Scribus-X.Y.Z-x86_64.AppImage`, which `scribus-mcp` already probes by default — no `SCRIBUS_BIN` tweak needed afterwards. Subsequent runs are idempotent (the file isn't redownloaded).
 
+**Already have an older Scribus on the host?** Set `SCRIBUS_MCP_IGNORE_HOST_SCRIBUS=1` alongside `SCRIBUS_MCP_AUTO_APPIMAGE=1` to skip every host-binary lookup (`SCRIBUS_BIN`, `$PATH`, the well-known install paths, the AppImage glob in `~/Applications/`) and go straight to the AppImage. Useful when the distro ships Scribus 1.6 but you want the 1.7.x AppImage for the full feature set (`create_qr_code_block`, etc.).
+
+```bash
+claude mcp add scribus -s user \
+  -e SCRIBUS_MCP_AUTO_APPIMAGE=1 \
+  -e SCRIBUS_MCP_IGNORE_HOST_SCRIBUS=1 \
+  -- uvx scribus-mcp
+```
+
 **Caveats** (Linux only; the AppImage doesn't apply to macOS / Windows):
 
 - Pulls ~140 MB from SourceForge over HTTPS. Off by default.
@@ -377,6 +386,7 @@ All env vars are optional:
 | `SCRIBUS_MCP_LOG_LEVEL` | `INFO` | Python log level |
 | `SCRIBUS_MCP_EXTRA_FONT_PATHS` | _(empty)_ | `os.pathsep`-separated list of directories to register as Scribus *Additional Font Paths* per headless spawn. Lets a CI worker drop fonts in a known location and have headless jobs see them without modifying the user's persistent Scribus prefs. Each spawn gets a fresh temp prefs dir cleaned up after the call. |
 | `SCRIBUS_MCP_AUTO_APPIMAGE` | `0` | Set to `1` to auto-fetch the official Scribus AppImage (Linux only) when no Scribus binary is resolvable. See [Auto-fetch the Scribus AppImage](#auto-fetch-the-scribus-appimage). |
+| `SCRIBUS_MCP_IGNORE_HOST_SCRIBUS` | `0` | Set to `1` to skip every host-binary lookup (`SCRIBUS_BIN`, `$PATH`, well-known install paths, the AppImage glob in `~/Applications/`) and force the AppImage path. Useful when the host has Scribus 1.6 installed but you want the 1.7.x AppImage. Pair with `SCRIBUS_MCP_AUTO_APPIMAGE=1`. |
 | `SCRIBUS_MCP_APPIMAGE_URL` | _(SourceForge URL for the pinned default version)_ | Override the AppImage download URL. |
 | `SCRIBUS_MCP_APPIMAGE_VERSION` | `1.7.3` | Override the version tag used in the installed filename and the default URL. |
 | `SCRIBUS_MCP_APPIMAGE_SHA256` | _(empty)_ | Pin a SHA256 to verify the downloaded AppImage against. Upstream doesn't publish one — you compute it yourself. |

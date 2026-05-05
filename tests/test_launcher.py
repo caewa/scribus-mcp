@@ -249,3 +249,102 @@ async def test_missing_bridge_spy_fails_cleanly(tmp_path):
 
     assert ok is False
     assert ".spy not found" in (reason or "")
+
+
+# ----- ignore_host_scribus -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ignore_host_skips_resolve_and_uses_appimage(tmp_path):
+    """``ignore_host_scribus=True`` skips the host-binary lookup entirely
+    and falls through to the AppImage path. Even when SCRIBUS_BIN points
+    at a perfectly valid executable, the launcher must not use it."""
+    cfg = _cfg(tmp_path)
+    inter = InteractiveBackend(cfg)
+
+    # A valid host binary that the launcher should NOT pick because the
+    # ignore flag is set.
+    host_bin = tmp_path / "scribus"
+    host_bin.write_text("")
+    # The fake AppImage path the worker thread will return.
+    appimage_bin = tmp_path / "Scribus-1.7.3-x86_64.AppImage"
+    appimage_bin.write_text("")
+
+    spy = tmp_path / "fake.spy"
+    spy.write_text("# noop")
+
+    cfg2 = replace(
+        cfg,
+        scribus_bin=str(host_bin),
+        auto_appimage=True,
+        ignore_host_scribus=True,
+    )
+
+    with (
+        patch.object(inter, "is_available", return_value=False),
+        patch("subprocess.Popen") as popen,
+        patch("scribus_mcp.backends._launcher.bridge_path", return_value=spy),
+        patch(
+            "scribus_mcp.backends._launcher._scribus_already_running",
+            return_value=False,
+        ),
+        patch(
+            "scribus_mcp.backends._launcher._resolve_scribus_bin"
+        ) as resolve,
+        patch(
+            "scribus_mcp.appimage.fetch_appimage_from_env",
+            return_value=appimage_bin,
+        ),
+        patch(
+            "scribus_mcp.backends._launcher._detect_scribus_version",
+            return_value=(1, 7),
+        ),
+    ):
+        await ensure_bridge_running(cfg2, inter, timeout_s=0.2, poll_interval_s=0.1)
+
+    # The host-binary resolver must NOT have been consulted.
+    resolve.assert_not_called()
+    popen.assert_called_once()
+    cmd = popen.call_args.args[0]
+    # Spawned with the AppImage path, not the host binary.
+    assert cmd[0] == str(appimage_bin)
+
+
+@pytest.mark.asyncio
+async def test_ignore_host_without_auto_appimage_fails_cleanly(tmp_path):
+    """``ignore_host_scribus=True`` + ``auto_appimage=False`` is a
+    misconfiguration — host lookup is suppressed and there's no AppImage
+    fallback. Surface a clear error instead of leaking the ambiguous
+    "binary not found at ..." message."""
+    cfg = _cfg(tmp_path)
+    inter = InteractiveBackend(cfg)
+
+    host_bin = tmp_path / "scribus"
+    host_bin.write_text("")
+    cfg2 = replace(
+        cfg,
+        scribus_bin=str(host_bin),
+        ignore_host_scribus=True,
+        auto_appimage=False,
+    )
+
+    with patch.object(inter, "is_available", return_value=False):
+        ok, reason = await ensure_bridge_running(cfg2, inter, timeout_s=0.2)
+
+    assert ok is False
+    assert "IGNORE_HOST_SCRIBUS" in (reason or "")
+    assert "AUTO_APPIMAGE" in (reason or "")
+
+
+def test_config_reads_ignore_host_scribus_from_env(monkeypatch):
+    monkeypatch.setenv("SCRIBUS_MCP_IGNORE_HOST_SCRIBUS", "1")
+    cfg = Config.from_env()
+    assert cfg.ignore_host_scribus is True
+
+    monkeypatch.setenv("SCRIBUS_MCP_IGNORE_HOST_SCRIBUS", "0")
+    cfg = Config.from_env()
+    assert cfg.ignore_host_scribus is False
+
+    monkeypatch.delenv("SCRIBUS_MCP_IGNORE_HOST_SCRIBUS", raising=False)
+    cfg = Config.from_env()
+    assert cfg.ignore_host_scribus is False

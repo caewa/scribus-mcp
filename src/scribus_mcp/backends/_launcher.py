@@ -117,7 +117,18 @@ async def ensure_bridge_running(
     if not spy.is_file():
         return False, f"bridge .spy not found at {spy}"
 
-    scribus_bin = _resolve_scribus_bin(config.scribus_bin)
+    # ``ignore_host_scribus`` skips every host-binary lookup so the
+    # AppImage path always wins — the typical use case is a host with
+    # Scribus 1.6 installed where the user wants the 1.7.x AppImage for
+    # the full feature surface.
+    if config.ignore_host_scribus:
+        scribus_bin = None
+        log.info(
+            "SCRIBUS_MCP_IGNORE_HOST_SCRIBUS=1 — skipping host binary "
+            "lookup, going straight to AppImage path."
+        )
+    else:
+        scribus_bin = _resolve_scribus_bin(config.scribus_bin)
     if scribus_bin is None and config.auto_appimage:
         # Opt-in: fetch the official AppImage and use it. Runs the
         # blocking download on a worker thread so the asyncio loop
@@ -131,6 +142,13 @@ async def ensure_bridge_running(
         except AppImageError as exc:
             return False, f"SCRIBUS_MCP_AUTO_APPIMAGE fetch failed: {exc}"
     if scribus_bin is None:
+        if config.ignore_host_scribus and not config.auto_appimage:
+            return False, (
+                "SCRIBUS_MCP_IGNORE_HOST_SCRIBUS=1 is set but "
+                "SCRIBUS_MCP_AUTO_APPIMAGE isn't — nothing to launch. "
+                "Set SCRIBUS_MCP_AUTO_APPIMAGE=1 (Linux) or unset "
+                "IGNORE_HOST_SCRIBUS to fall back to the host binary."
+            )
         return False, (
             f"Scribus binary not found at {config.scribus_bin!r}. "
             "Set SCRIBUS_BIN env var, install Scribus 1.6 / 1.7, or "
