@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 from scribus_mcp.tools.patterns._styling import HAIRLINE_PT
 
 
@@ -393,20 +394,12 @@ for _x, _y, _w, _h, _text in {dates_spec!r}:
     _s.setTextAlignment(1, _n)
     _date_names.append(_n)
 
-_members = [_axis] + _connector_names + _marker_names + _label_names + _date_names
-_before = set(_it[0] for _it in (_s.getPageItems() or []))
-_s.groupObjects(_members)
-_after = set(_it[0] for _it in (_s.getPageItems() or []))
-_new = sorted(_after - _before - set(_members))
-_group = _new[-1] if _new else None
-
 _value = {{
     "axis": _axis,
     "markers": _marker_names,
     "connectors": _connector_names,
     "labels": _label_names,
     "dates": _date_names,
-    "group": _group,
 }}
 """
 
@@ -415,6 +408,14 @@ _value = {{
             return {"ok": False, "error": res.error or "timeline script failed"}
 
         out = res.value or {}
+        group_name = await group_created_objects(
+            backend,
+            [out.get("axis")]
+            + list(out.get("connectors", []))
+            + list(out.get("markers", []))
+            + list(out.get("labels", []))
+            + list(out.get("dates", [])),
+        )
 
         # Bbox of everything drawn. The "above" side covers the label
         # stack reaching out to ring ``max_above_ring``; the "below"
@@ -441,7 +442,7 @@ _value = {{
             "connectors": out.get("connectors", []),
             "labels": out.get("labels", []),
             "dates": out.get("dates", []),
-            "group": out.get("group"),
+            "group": group_name,
             # Surface the resolved row count so callers passing
             # ``label_rows="auto"`` can see whether single-row fit or
             # the timeline was bumped to two-row staggered.

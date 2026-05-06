@@ -12,6 +12,7 @@ import math
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -214,10 +215,17 @@ _value = {{
             return {"ok": False, "error": res.error or "pie_chart script failed"}
 
         out = res.value or {}
+        group_name = await group_created_objects(
+            backend,
+            list(out.get("slices", []))
+            + list(out.get("legend", []))
+            + [out.get("outer_ring")],
+        )
         return {
             "ok": True,
             "slices": out.get("slices", []),
             "legend": out.get("legend", []),
             "outer_ring": out.get("outer_ring"),
+            "group": group_name,
             "error": None,
         }

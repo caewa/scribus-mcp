@@ -10,6 +10,7 @@ from __future__ import annotations
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 from scribus_mcp.tools.patterns._styling import THIN_PT
 
 
@@ -224,12 +225,24 @@ _value = {{
             return {"ok": False, "error": res.error or "comparison_table script failed"}
 
         out = res.value or {}
+        cell_names: list[str | None] = []
+        for row in out.get("cells", []) or []:
+            if isinstance(row, list):
+                cell_names.extend(row)
+        group_name = await group_created_objects(
+            backend,
+            list(out.get("headers", []))
+            + cell_names
+            + list(out.get("zebra", []))
+            + list(out.get("highlights", [])),
+        )
         return {
             "ok": True,
             "headers": out.get("headers", []),
             "cells": out.get("cells", []),
             "zebra_rows": out.get("zebra", []),
             "highlights": out.get("highlights", []),
+            "group": group_name,
             "rows_drawn": len(rows),
             "error": None,
         }

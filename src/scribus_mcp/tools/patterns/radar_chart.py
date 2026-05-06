@@ -18,6 +18,7 @@ import math
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 from scribus_mcp.tools.patterns._styling import THIN_PT
 
 
@@ -350,6 +351,14 @@ _value = {{
 
         out = res.value or {}
         data_names = out.get("data", [])
+        group_name = await group_created_objects(
+            backend,
+            list(out.get("rings", []))
+            + list(out.get("axes", []))
+            + list(data_names)
+            + list(out.get("labels", []))
+            + list(out.get("legend", [])),
+        )
 
         # Bbox math (mirrors previous behaviour).
         halo_x = label_offset_mm + label_width_mm / 2
@@ -373,6 +382,7 @@ _value = {{
             "axes": out.get("axes", []),
             "labels": out.get("labels", []),
             "legend": out.get("legend", []),
+            "group": group_name,
             "n_axes": n,
             "n_datasets": len(datasets),
             "bbox": {

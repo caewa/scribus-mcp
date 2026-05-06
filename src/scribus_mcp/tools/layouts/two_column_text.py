@@ -5,6 +5,7 @@ from __future__ import annotations
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -75,10 +76,12 @@ def register(mcp, ctx: ServerCtx) -> None:
         await backend.call("setTextAlignment", align_map[alignment], rn)
         await backend.call("setLineSpacing", float(line_spacing_pt), rn)
 
+        group_name = await group_created_objects(backend, [ln, rn])
         return {
             "ok": True,
             "left": ln,
             "right": rn,
+            "group": group_name,
             "column_width_mm": left_bb["width_mm"],
             "error": None,
         }

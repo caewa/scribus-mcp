@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -81,11 +82,15 @@ def register(mcp, ctx: ServerCtx) -> None:
                 await backend.call("setLineShade", int(rule_shade), rule_name)
                 await backend.call("setLineWidth", float(rule_width_pt), rule_name)
 
+        group_name = await group_created_objects(
+            backend, [eyebrow_name, title_name, rule_name]
+        )
         return {
             "ok": True,
             "eyebrow": eyebrow_name,
             "title": title_name,
             "rule": rule_name,
+            "group": group_name,
             "bottom_y_mm": cur_y + (0.5 if with_rule else 0),
             "error": None,
         }

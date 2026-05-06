@@ -35,6 +35,7 @@ from __future__ import annotations
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -350,9 +351,15 @@ _value = {{"cards": _cards}}
             return {"ok": False, "error": res.error or "axes_strip script failed"}
 
         out = res.value or {}
+        members: list[str | None] = []
+        for card in out.get("cards", []) or []:
+            if isinstance(card, dict):
+                members.extend(card.values())
+        group_name = await group_created_objects(backend, members)
         return {
             "ok": True,
             "cards": out.get("cards", []),
+            "group": group_name,
             "count": len(items),
             "card_width_mm": bboxes[0]["width_mm"],
             "bbox": {

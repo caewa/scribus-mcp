@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -83,10 +84,14 @@ def register(mcp, ctx: ServerCtx) -> None:
         if not res.ok:
             return {"ok": False, "error": res.error or "dot_label script failed"}
         out = res.value or {}
+        group_name = await group_created_objects(
+            backend, [out.get("circle"), out.get("text")]
+        )
         return {
             "ok": True,
             "circle": out.get("circle"),
             "text": out.get("text"),
+            "group": group_name,
             "error": None,
         }
 
@@ -183,11 +188,15 @@ def register(mcp, ctx: ServerCtx) -> None:
                 "circle": circle_name,
             }
         outline_info = result.value or {}
+        group_name = await group_created_objects(
+            backend, [circle_name, outline_info.get("name")]
+        )
         return {
             "ok": True,
             "circle": circle_name,
             "text": outline_info.get("name"),
             "text_bbox_mm": outline_info.get("bbox"),
+            "group": group_name,
             "number": int(number),
             "error": None,
         }

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -129,10 +130,14 @@ def register(mcp, ctx: ServerCtx) -> None:
             entry_names.append({"title": tn, "leader": ldn, "page_number": pn, "level": level})
             cur_y += line_height_mm
 
+        group_name = await group_created_objects(
+            backend, [title_name] + list(entry_names or [])
+        )
         return {
             "ok": True,
             "title": title_name,
             "entries": entry_names,
+            "group": group_name,
             "bottom_y_mm": cur_y,
             "error": None,
         }

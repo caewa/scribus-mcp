@@ -10,6 +10,7 @@ from scribus_mcp.tools._common import (
     require_min_scribus_version,
 )
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -73,9 +74,13 @@ _value = {{"barcode": _barcode, "caption": _caption}}
         if not res.ok:
             return {"ok": False, "error": res.error or "createBarcode failed"}
         out = res.value or {}
+        group_name = await group_created_objects(
+            backend, [out.get("barcode"), out.get("caption")]
+        )
         return {
             "ok": True,
             "barcode": out.get("barcode"),
             "caption": out.get("caption"),
+            "group": group_name,
             "error": None,
         }

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -265,6 +266,16 @@ _value = {{
             return {"ok": False, "error": res.error or "dark_kpi_band script failed"}
 
         out = res.value or {}
+        members: list[str | None] = [
+            out.get("background"),
+            out.get("title"),
+            out.get("headline"),
+            out.get("caption"),
+        ]
+        for row in out.get("rows", []) or []:
+            if isinstance(row, dict):
+                members.extend(row.values())
+        group_name = await group_created_objects(backend, members)
         return {
             "ok": True,
             "background": out.get("background"),
@@ -272,6 +283,7 @@ _value = {{
             "headline": out.get("headline"),
             "caption": out.get("caption"),
             "rows": out.get("rows", []),
+            "group": group_name,
             "bbox": {
                 "x_mm": float(x_mm),
                 "y_mm": float(y_mm),

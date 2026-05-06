@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -84,10 +85,12 @@ def register(mcp, ctx: ServerCtx) -> None:
         await backend.call("setFontSize", float(caption_font_size_pt), cn)
         await backend.call("setTextAlignment", align_map[caption_alignment], cn)
 
+        group_name = await group_created_objects(backend, [in_, cn])
         return {
             "ok": True,
             "image": in_,
             "caption": cn,
+            "group": group_name,
             "image_height_mm": img_h,
             "figure_number": figure_number if figure_number > 0 else None,
             "error": None,

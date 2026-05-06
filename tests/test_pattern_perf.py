@@ -37,6 +37,10 @@ class _CountingBackend(ScribusBackend):
         return ScribusResult(ok=True, value=None)
 
     async def script(self, body, result_expr="None"):
+        # Skip the trailing groupObjects call so script_count stays
+        # focused on the pattern's own script bodies.
+        if "_s.groupObjects" in body:
+            return ScribusResult(ok=True, value=None)
         self.script_count += 1
         self.last_script_body = body
         self.last_result_expr = result_expr

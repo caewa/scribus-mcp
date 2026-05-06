@@ -8,6 +8,7 @@ from __future__ import annotations
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools._fit import FIT_TEXT_FRAME_HELPER
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -113,11 +114,16 @@ _value = {{"background": _bg, "title": _title, "body": _body, "height_mm": _fina
         if not res.ok:
             return {"ok": False, "error": res.error or "callout_box script failed"}
         out = res.value or {}
+        group_name = await group_created_objects(
+            backend,
+            [out.get("background"), out.get("title"), out.get("body")],
+        )
         return {
             "ok": True,
             "background": out.get("background"),
             "title": out.get("title"),
             "body": out.get("body"),
+            "group": group_name,
             "height_mm": out.get("height_mm"),
             "error": None,
         }

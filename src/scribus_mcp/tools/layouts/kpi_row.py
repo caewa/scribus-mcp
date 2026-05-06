@@ -12,6 +12,7 @@ from __future__ import annotations
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 from scribus_mcp.tools.patterns.kpi_tile import render_kpi_tile_script
 
 
@@ -150,9 +151,21 @@ def register(mcp, ctx: ServerCtx) -> None:
                 }
             )
 
+        members: list[str | None] = []
+        for tile in out:
+            members.extend(
+                [
+                    tile.get("background"),
+                    tile.get("label"),
+                    tile.get("value"),
+                    tile.get("delta"),
+                ]
+            )
+        group_name = await group_created_objects(backend, members)
         return {
             "ok": True,
             "tiles": out,
+            "group": group_name,
             "count": len(items),
             "tile_width_mm": bboxes[0]["width_mm"],
             "error": None,

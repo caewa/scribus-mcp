@@ -33,6 +33,8 @@ class _CapturingBackend(ScribusBackend):
         return ScribusResult(ok=True, value=None)
 
     async def script(self, body, result_expr="None"):
+        if "_s.groupObjects" in body:
+            return ScribusResult(ok=True, value=None)
         self.last_body = body
         return ScribusResult(
             ok=True,

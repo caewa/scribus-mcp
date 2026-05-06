@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def _hex_to_rgb(h: str) -> tuple[int, int, int]:
@@ -417,12 +418,22 @@ _value = {{
                 "title_text": out.get("title_text"),
                 "code": out.get("code"),
             }
+        group_name = await group_created_objects(
+            backend,
+            [
+                out.get("background"),
+                out.get("title_bar"),
+                out.get("title_text"),
+                out.get("code"),
+            ],
+        )
         return {
             "ok": True,
             "background": out.get("background"),
             "title_bar": out.get("title_bar"),
             "title_text": out.get("title_text"),
             "code": out.get("code"),
+            "group": group_name,
             "language": getattr(lexer, "name", language or ""),
             "font": out.get("font"),
             "line_count": line_count,

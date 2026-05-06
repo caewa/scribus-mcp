@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def render_kpi_tile_script(
@@ -183,12 +184,22 @@ async def render_kpi_tile(
     if not res.ok:
         return {"ok": False, "error": res.error or "kpi_tile script failed"}
     out = res.value or {}
+    group_name = await group_created_objects(
+        backend,
+        [
+            out.get("background"),
+            out.get("label"),
+            out.get("value"),
+            out.get("delta"),
+        ],
+    )
     return {
         "ok": True,
         "background": out.get("background"),
         "label": out.get("label"),
         "value": out.get("value"),
         "delta": out.get("delta"),
+        "group": group_name,
         "auto_shrunk_value_font": actual_value_font != float(value_font_size_pt),
         "value_font_used_pt": actual_value_font,
         "error": None,

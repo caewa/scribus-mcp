@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -130,6 +131,10 @@ def register(mcp, ctx: ServerCtx) -> None:
                 await backend.call("setTextColor", right_color, right_name)
                 await backend.call("setTextAlignment", 2, right_name)  # right-aligned
 
+        group_name = await group_created_objects(
+            backend,
+            [band, eyebrow_name, title_name, subtitle_name, right_name],
+        )
         return {
             "ok": True,
             "band": band,
@@ -137,6 +142,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             "title": title_name,
             "subtitle": subtitle_name,
             "right_text": right_name,
+            "group": group_name,
             "bottom_y_mm": y_mm + height_mm,
             "error": None,
         }

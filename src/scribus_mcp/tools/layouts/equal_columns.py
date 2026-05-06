@@ -13,6 +13,7 @@ from __future__ import annotations
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -82,9 +83,17 @@ def register(mcp, ctx: ServerCtx) -> None:
                 await backend.call("setLineColor", "None", name)
             frames.append({"name": name, **b})
 
+        names: list[str | None] = []
+        for f in frames or []:
+            if isinstance(f, dict):
+                names.append(f.get("name"))
+            elif isinstance(f, str):
+                names.append(f)
+        group_name = await group_created_objects(backend, names)
         return {
             "ok": True,
             "frames": frames,
+            "group": group_name,
             "columns": columns,
             "column_width_mm": bboxes[0]["width_mm"],
             "error": None,

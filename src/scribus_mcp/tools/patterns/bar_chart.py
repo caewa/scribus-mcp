@@ -19,6 +19,7 @@ from __future__ import annotations
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_column_bboxes
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 from scribus_mcp.tools.patterns._styling import HAIRLINE_PT
 
 
@@ -345,6 +346,14 @@ _value = {{
             return {"ok": False, "error": res.error or "bar_chart script failed"}
 
         out = res.value or {}
+        group_name = await group_created_objects(
+            backend,
+            list(out.get("bars", []))
+            + list(out.get("gridlines", []))
+            + list(out.get("labels", []))
+            + list(out.get("value_labels", []))
+            + list(out.get("legend", [])),
+        )
         return {
             "ok": True,
             "bars": out.get("bars", []),
@@ -352,6 +361,7 @@ _value = {{
             "labels": out.get("labels", []),
             "value_labels": out.get("value_labels", []),
             "legend": out.get("legend", []),
+            "group": group_name,
             "n_datasets": n_ds,
             # Ground-truth bbox of everything we drew — same numbers the
             # caller passed in, since height_mm is now inclusive.

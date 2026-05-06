@@ -10,6 +10,7 @@ from __future__ import annotations
 from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_backend
 from scribus_mcp.tools.layouts._geometry import compute_row_bboxes
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -186,9 +187,15 @@ def register(mcp, ctx: ServerCtx) -> None:
         # to scan every step record to know whether any badge digits
         # failed to outline.
         digit_warnings = sum(1 for s in out if s.get("digit_error"))
+        members: list[str | None] = []
+        for step in out:
+            for key in ("circle", "digit", "container", "title", "body"):
+                members.append(step.get(key))
+        group_name = await group_created_objects(backend, members)
         return {
             "ok": True,
             "steps": out,
+            "group": group_name,
             "count": len(out),
             "digit_warnings": digit_warnings,
             "error": None,

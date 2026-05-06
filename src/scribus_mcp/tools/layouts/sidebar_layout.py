@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from scribus_mcp.tools._common import Mode, ServerCtx, get_backend
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 
 def register(mcp, ctx: ServerCtx) -> None:
@@ -110,11 +111,13 @@ def register(mcp, ctx: ServerCtx) -> None:
         await backend.call("setTextAlignment", align_map[main_alignment], mn)
         await backend.call("setLineSpacing", float(main_line_spacing_pt), mn)
 
+        group_name = await group_created_objects(backend, [bg_name, sn, mn])
         return {
             "ok": True,
             "sidebar_bg": bg_name,
             "sidebar_text": sn,
             "main_text": mn,
+            "group": group_name,
             "sidebar_width_mm": sidebar_width_mm,
             "main_width_mm": main_w,
             "error": None,

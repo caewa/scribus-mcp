@@ -14,6 +14,7 @@ from scribus_mcp.tools._common import Mode, ServerCtx, clean_user_text, get_back
 from scribus_mcp.tools._fit import FIT_TEXT_FRAME_HELPER
 from scribus_mcp.tools.layouts._geometry import compute_grid_bboxes
 from scribus_mcp.tools.palette import resolve_color
+from scribus_mcp.tools.patterns._grouping import group_created_objects
 
 _ALIGN = {"left": 0, "center": 1, "right": 2, "justify": 3, "forced": 4}
 _VALID_SIDES = {"left", "top", "right", "bottom"}
@@ -426,9 +427,15 @@ def register(mcp, ctx: ServerCtx) -> None:
         for c in cards:
             c.pop("_bbox", None)
 
+        members: list[str | None] = []
+        for c in cards:
+            for key in ("background", "stripe", "eyebrow", "title", "body"):
+                members.append(c.get(key))
+        group_name = await group_created_objects(backend, members)
         return {
             "ok": True,
             "cards": cards,
+            "group": group_name,
             "rows": rows,
             "columns": columns,
             "count": n,
