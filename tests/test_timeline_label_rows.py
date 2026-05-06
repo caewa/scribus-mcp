@@ -79,8 +79,8 @@ def _clear_palette_cache():
 def _labels_section(body: str) -> str:
     """Slice the section of the script body between ``_label_names = []``
     and ``_date_names = []`` so regex parsing doesn't confuse label
-    tuples with date tuples (both share the same ``(x,y,w,h,text)``
-    shape)."""
+    tuples with date tuples (labels carry one trailing valign int,
+    dates carry two — halign + valign)."""
     start = body.find("_label_names = []")
     end = body.find("_date_names = []")
     if start < 0 or end < 0 or end < start:
@@ -94,7 +94,7 @@ def _label_y_values(body: str) -> list[float]:
     return [
         float(m.group(2))
         for m in re.finditer(
-            r"\((-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?), \d+(?:\.\d+)?, 5\.0, '([^']+)'\)",
+            r"\((-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?), \d+(?:\.\d+)?, 5\.0, '([^']+)', \d+\)",
             section,
         )
     ]
@@ -195,7 +195,7 @@ def test_label_rows_two_doubles_horizontal_slot(monkeypatch):
     widths = [
         float(m.group(1))
         for m in re.finditer(
-            r"\(-?\d+(?:\.\d+)?, -?\d+(?:\.\d+)?, (\d+(?:\.\d+)?), 5\.0, '[A-F]'\)",
+            r"\(-?\d+(?:\.\d+)?, -?\d+(?:\.\d+)?, (\d+(?:\.\d+)?), 5\.0, '[A-F]', \d+\)",
             section,
         )
     ]
