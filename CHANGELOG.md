@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-05-06
+
+Bridge gains a third dispatch path that drops the bundled-PyQt6
+dependency entirely when running against a Scribus build that exposes
+the new Scripter primitives `scribus.invokeLater(callable, *args)` and
+`scribus.processEvents()`. Includes the upstream Scribus patch
+(`scripter-invokelater.patch`) at the repo root for reference.
+
+### Added
+
+- **Native Scripter dispatch path in
+  [src/scribus_mcp/bridge/scribus_mcp_bridge.spy](src/scribus_mcp/bridge/scribus_mcp_bridge.spy).**
+  Bridge probes `hasattr(scribus, "invokeLater")` at startup and
+  prefers the native primitives over the legacy PyQt6 `QTimer` path.
+  Selection order: native invokeLater → PyQt6 QTimer → main-thread
+  blocker. Startup log now reports `dispatch=native-invokeLater |
+  qt-PyQt6 | main-thread-blocking`. With the patched build there is
+  no Python Qt binding to install — the bundled-PyQt6 step (whose
+  Qt minor had to match Scribus's exactly, fragile on Windows) is no
+  longer needed.
+- **[scripter-invokelater.patch](scripter-invokelater.patch)** at the
+  repo root: small upstream Scribus patch (+87 lines, 3 files in
+  `scribus/plugins/scriptplugin/`) adding `scribus.invokeLater` and
+  `scribus.processEvents`. Apply with
+  `git apply ../scripter-invokelater.patch` from inside a Scribus
+  source checkout, then rebuild.
+
+### Changed
+
+- **`_block_main_thread_dispatch` pumps Qt via
+  `scribus.processEvents()` when available**, falling back to the
+  historical `scribus.progressReset()` side-effect on unpatched
+  builds. The blocker is now also entered in GUI mode under the
+  native path: Scribus's `PyRun_String` keeps the GIL on the main
+  thread, so a returning script would leave the listener thread
+  starving on GIL re-acquisition after every `accept()`. The
+  blocker's `_inbox.get(timeout=…)` and `time.sleep` release the
+  GIL periodically so the listener can post `invokeLater` events.
+  PyQt manages those transitions internally, so the QTimer path
+  still returns immediately.
+
+### Fixed
+
+- Three pre-existing ruff findings cleaned up:
+  `[x] + list(y)` → iterable unpacking
+  ([table_of_contents.py](src/scribus_mcp/tools/layouts/table_of_contents.py),
+  [timeline.py](src/scribus_mcp/tools/patterns/timeline.py)) and a
+  `if/else` collapsed to a ternary in `timeline.py`. `ruff check
+  src/` now passes cleanly.
+
 ## [1.2.0] — 2026-05-06
 
 Two cooperating features in this minor: every multi-element pattern
