@@ -74,12 +74,36 @@ def register(mcp, ctx: ServerCtx) -> None:
 
     @mcp.tool()
     async def open_document(path: str, mode: Mode = "auto") -> dict:
-        """Open an existing .sla document."""
+        """Open an existing .sla document.
+
+        If the document at ``path`` is already the active document in an
+        interactive Scribus session, this is a no-op — calling Scribus's
+        ``openDoc`` again on a path that's already open pops a modal
+        ("Ce document est déjà ouvert…") that requires user dismissal.
+        """
         backend = await get_backend(ctx, mode)
-        result = await backend.call("openDoc", path)
-        if result.ok:
+        body = f"""
+import os
+import scribus as _s
+
+_target = os.path.abspath({path!r})
+_already_open = False
+try:
+    if _s.haveDoc():
+        _current = _s.getDocName() or ""
+        if _current and os.path.abspath(_current) == _target:
+            _already_open = True
+except Exception:
+    _already_open = False
+
+if not _already_open:
+    _s.openDoc(_target)
+_value = True
+"""
+        res = await backend.script(body, result_expr="_value")
+        if res.ok:
             invalidate_palette(backend)
-        return {"ok": result.ok, "value": result.unwrap_or(), "error": result.error}
+        return {"ok": res.ok, "value": res.value, "error": res.error}
 
     @mcp.tool()
     async def save_document(mode: Mode = "auto") -> dict:

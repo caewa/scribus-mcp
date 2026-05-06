@@ -308,15 +308,31 @@ def register(mcp, ctx: ServerCtx) -> None:
 
             if show_connectors:
                 # Connector hugs the side of the marker pointing at the
-                # label, reaching just inside the label frame.
+                # label, reaching just inside the label frame. In
+                # alternating mode (label_rows>=2) the date sits between
+                # the marker and the label on the same side; the date
+                # itself anchors the label visually, so the connector
+                # stops at the date frame rather than crossing through
+                # the date text.
+                has_date = bool(it.get("date"))
                 if side < 0:
-                    connectors_spec.append(
-                        (tx, y_mm - marker_radius_mm, tx, label_y + float(label_height_mm) - 0.5)
-                    )
+                    if label_rows >= 2 and has_date:
+                        connectors_spec.append(
+                            (tx, y_mm - marker_radius_mm, tx, y_mm - float(date_offset_mm))
+                        )
+                    else:
+                        connectors_spec.append(
+                            (tx, y_mm - marker_radius_mm, tx, label_y + float(label_height_mm) - 0.5)
+                        )
                 else:
-                    connectors_spec.append(
-                        (tx, y_mm + marker_radius_mm, tx, label_y + 0.5)
-                    )
+                    if label_rows >= 2 and has_date:
+                        connectors_spec.append(
+                            (tx, y_mm + marker_radius_mm, tx, y_mm + float(date_offset_mm))
+                        )
+                    else:
+                        connectors_spec.append(
+                            (tx, y_mm + marker_radius_mm, tx, label_y + 0.5)
+                        )
 
             markers_spec.append(
                 (
@@ -333,11 +349,51 @@ def register(mcp, ctx: ServerCtx) -> None:
             # extend past the timeline's horizontal span — otherwise the
             # first/last labels poke into the page margins.
             label_x = max(x_mm, min(tx - label_w / 2, x_mm + width_mm - label_w))
-            labels_spec.append((label_x, label_y, label_w, float(label_height_mm), str(it["label"])))
+            # In alternating mode (label_rows>=2) the date sits between
+            # marker and label on the same side. To pull the visible
+            # label text close to the date (and away from the empty
+            # padding inside the frame), bottom-align the text on the
+            # top side and keep top-align (default) on the bottom side.
+            if label_rows >= 2:
+                label_valign = 2 if side < 0 else 0
+            else:
+                label_valign = 0
+            labels_spec.append(
+                (label_x, label_y, label_w, float(label_height_mm), str(it["label"]), label_valign)
+            )
 
             if it.get("date"):
                 date_x = max(x_mm, min(tx - label_w / 2, x_mm + width_mm - label_w))
-                dates_spec.append((date_x, date_y, label_w, DATE_HEIGHT_MM, str(it["date"])))
+                # Mirror the label trick for dates: bottom-side dates
+                # bottom-align so the text sits next to the label
+                # below; top-side dates stay top-aligned (text near the
+                # label above, which is itself bottom-aligned).
+                if label_rows >= 2:
+                    date_valign = 2 if side > 0 else 0
+                else:
+                    date_valign = 0
+                # First and last items sit at the timeline edges where
+                # the centered text would float far from its marker.
+                # Anchor the text to the tick: left-align the first
+                # date, right-align the last. Everything else stays
+                # centered on its marker.
+                if idx == 0:
+                    date_halign = 0
+                elif idx == n - 1:
+                    date_halign = 2
+                else:
+                    date_halign = 1
+                dates_spec.append(
+                    (
+                        date_x,
+                        date_y,
+                        label_w,
+                        DATE_HEIGHT_MM,
+                        str(it["date"]),
+                        date_halign,
+                        date_valign,
+                    )
+                )
 
         # ---- One script body that creates everything --------------------
         body = f"""
@@ -369,16 +425,20 @@ for _x, _y, _size, _fill, _ring, _ring_w in {markers_spec!r}:
     _marker_names.append(_n)
 
 _label_names = []
-for _x, _y, _w, _h, _text in {labels_spec!r}:
+for _x, _y, _w, _h, _text, _va in {labels_spec!r}:
     _n = _s.createText(_x, _y, _w, _h)
     _s.setText(_text, _n)
     _s.setFontSize({float(label_font_size_pt)}, _n)
     _s.setTextColor({label_color!r}, _n)
     _s.setTextAlignment(1, _n)
+    try:
+        _s.setTextVerticalAlignment(_va, _n)
+    except Exception:
+        pass
     _label_names.append(_n)
 
 _date_names = []
-for _x, _y, _w, _h, _text in {dates_spec!r}:
+for _x, _y, _w, _h, _text, _ha, _va in {dates_spec!r}:
     _n = _s.createText(_x, _y, _w, _h)
     _s.setText(_text, _n)
     _s.setFontSize({float(date_font_size_pt)}, _n)
@@ -388,7 +448,11 @@ for _x, _y, _w, _h, _text in {dates_spec!r}:
             _s.setTextShade({int(date_shade)}, _n)
         except Exception:
             pass  # not all Scribus builds expose setTextShade
-    _s.setTextAlignment(1, _n)
+    _s.setTextAlignment(_ha, _n)
+    try:
+        _s.setTextVerticalAlignment(_va, _n)
+    except Exception:
+        pass
     _date_names.append(_n)
 
 _value = {{
