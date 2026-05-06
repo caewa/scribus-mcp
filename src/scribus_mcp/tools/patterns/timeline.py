@@ -354,10 +354,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             # label text close to the date (and away from the empty
             # padding inside the frame), bottom-align the text on the
             # top side and keep top-align (default) on the bottom side.
-            if label_rows >= 2:
-                label_valign = 2 if side < 0 else 0
-            else:
-                label_valign = 0
+            label_valign = (2 if side < 0 else 0) if label_rows >= 2 else 0
             labels_spec.append(
                 (label_x, label_y, label_w, float(label_height_mm), str(it["label"]), label_valign)
             )
@@ -368,10 +365,7 @@ def register(mcp, ctx: ServerCtx) -> None:
                 # bottom-align so the text sits next to the label
                 # below; top-side dates stay top-aligned (text near the
                 # label above, which is itself bottom-aligned).
-                if label_rows >= 2:
-                    date_valign = 2 if side > 0 else 0
-                else:
-                    date_valign = 0
+                date_valign = (2 if side > 0 else 0) if label_rows >= 2 else 0
                 # First and last items sit at the timeline edges where
                 # the centered text would float far from its marker.
                 # Anchor the text to the tick: left-align the first
