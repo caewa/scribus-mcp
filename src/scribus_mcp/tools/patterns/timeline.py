@@ -71,17 +71,25 @@ def register(mcp, ctx: ServerCtx) -> None:
         with a one-year gap next to a three-year gap).
 
         ``label_rows`` (default ``"auto"``) lets adjacent items
-        alternate between N stacked y-rows so each label competes only
-        with the one ``label_rows`` items away — roughly ``label_rows×``
-        more horizontal slot per label. ``"auto"`` estimates each
-        label's rendered width from its character count and the font
-        size; if any label overflows its single-row slot, the timeline
-        bumps to 2 rows automatically. Pass an explicit integer (1..4)
-        to override — e.g. ``label_rows=1`` to force a single line and
+        alternate between N y-rows so each label competes only with the
+        one ``label_rows`` items away — roughly ``label_rows×`` more
+        horizontal slot per label. ``"auto"`` estimates each label's
+        rendered width from its character count and the font size; if
+        any label overflows its single-row slot, the timeline bumps to
+        2 rows automatically. Pass an explicit integer (1..4) to
+        override — e.g. ``label_rows=1`` to force a single line and
         accept the truncation, or ``label_rows=3`` for very dense
-        timelines. Far-row labels render
-        ``label_height_mm + label_row_gap_mm`` higher than near-row
-        ones, with longer connectors.
+        timelines.
+
+        With ``label_rows=1`` (single row), all labels sit above the
+        axis and dates below — the classic timeline look. With
+        ``label_rows>=2``, even rows (0, 2, ...) sit above the axis and
+        odd rows (1, 3, ...) sit below, so adjacent items split across
+        the axis line. In the multi-row case dates render close to the
+        axis on the same side as their item's label (between label and
+        axis); the label is pushed outward to leave room. Higher rings
+        (e.g. row 2 above row 0) stack
+        ``label_height_mm + label_row_gap_mm`` further out.
 
         ``bottom_margin_mm`` is visual breathing room added to the
         reported bbox below the date row — bumping it stops the next
@@ -135,7 +143,14 @@ def register(mcp, ctx: ServerCtx) -> None:
             return True
 
         if isinstance(label_rows, str):
-            if label_rows.strip().lower() != "auto":
+            stripped = label_rows.strip().lower()
+            if stripped == "auto":
+                label_rows = 1 if _fits_at_rows(1) else 2
+            elif stripped.isdigit():
+                label_rows = int(stripped)
+                if not 1 <= label_rows <= 4:
+                    return {"ok": False, "error": "label_rows must be between 1 and 4"}
+            else:
                 return {
                     "ok": False,
                     "error": (
@@ -143,7 +158,6 @@ def register(mcp, ctx: ServerCtx) -> None:
                         f"(got {label_rows!r})"
                     ),
                 }
-            label_rows = 1 if _fits_at_rows(1) else 2
         else:
             if not 1 <= int(label_rows) <= 4:
                 return {"ok": False, "error": "label_rows must be between 1 and 4"}
@@ -160,17 +174,39 @@ def register(mcp, ctx: ServerCtx) -> None:
                 "ok": False,
                 "error": "pass only one of top_y_mm or axis_y_mm, not both",
             }
-        # Total label-stack height when label_rows>1: each extra row
-        # stacks an additional (label_height_mm + label_row_gap_mm)
-        # above the near-row baseline.
-        rows_extra = (label_rows - 1) * (float(label_height_mm) + float(label_row_gap_mm))
-        if top_y_mm is not None:
-            axis_y = (
-                float(top_y_mm)
-                + float(label_offset_mm)
-                + float(label_height_mm)
-                + rows_extra
+        # Multi-row mode (label_rows>=2) splits items above/below the
+        # axis. Dates render on the same side as their item, close to
+        # the axis (between label and axis), so the label has to sit
+        # further out when any item carries a date.
+        DATE_HEIGHT_MM = 5.0
+        DATE_LABEL_GAP_MM = 1.0
+        any_date = any(it.get("date") for it in items)
+        if label_rows >= 2 and any_date:
+            side_anchor = max(
+                float(label_offset_mm),
+                float(date_offset_mm) + DATE_HEIGHT_MM + DATE_LABEL_GAP_MM,
             )
+        else:
+            side_anchor = float(label_offset_mm)
+        row_step = float(label_height_mm) + float(label_row_gap_mm)
+
+        if label_rows == 1:
+            # Backward-compat single-row: all labels above the axis,
+            # dates below.
+            max_above_ring = 0
+            max_below_ring = -1
+        else:
+            max_above_ring = (label_rows - 1) // 2
+            max_below_ring = (label_rows - 2) // 2
+
+        # Distance from axis to the top of the highest above-row label.
+        above_extent = (
+            side_anchor
+            + float(label_height_mm)
+            + max_above_ring * row_step
+        )
+        if top_y_mm is not None:
+            axis_y = float(top_y_mm) + above_extent
         else:
             axis_y = float(axis_y_mm)
         # Internal alias used below — was named y_mm before the rename.
@@ -193,11 +229,10 @@ def register(mcp, ctx: ServerCtx) -> None:
         # Per-item label width — bounded by the distance to each
         # *same-row* neighbour along the axis. With evenly spaced items
         # and label_rows=1 this matches the previous uniform slot_w
-        # behaviour. With label_rows=2, items 0,2,4 share row 0 and
-        # items 1,3,5 share row 1, so each label only competes with the
-        # label two markers away — roughly 2x more horizontal slot.
-        # Item ``i``'s row is ``i % label_rows``; far-row labels stack
-        # higher above the axis with a longer connector.
+        # behaviour. With label_rows=2, items 0,2,4 share row 0 (above)
+        # and items 1,3,5 share row 1 (below), so each label only
+        # competes with the label two markers away — roughly 2x more
+        # horizontal slot.
         item_rows = [i % label_rows for i in range(n)]
 
         def _same_row_neighbour(i: int, direction: int) -> float:
@@ -233,28 +268,57 @@ def register(mcp, ctx: ServerCtx) -> None:
         # Dates: list of (x, y, w, h, text)
         dates_spec = []
 
-        # Each row r above the axis lives at:
-        #   label_y(r) = axis_y - label_offset_mm - (r+1)*label_h - r*gap
-        # so row 0 is closest to the axis and higher rows stack above.
-        row_step = float(label_height_mm) + float(label_row_gap_mm)
+        # Per-row vertical placement.
+        # ``label_rows == 1``: all rows above (legacy behaviour),
+        #   label_y(0) = axis - label_offset - label_h.
+        # ``label_rows >= 2``: even rows above, odd rows below; the
+        #   ring index ``r // 2`` controls how far from the axis the
+        #   row sits, with ring 0 closest. Dates ride along on the same
+        #   side as the label, between the label and the axis.
 
-        def _label_y_for_row(row: int) -> float:
-            return y_mm - float(label_offset_mm) - float(label_height_mm) - row * row_step
+        def _placement_for_row(row: int) -> tuple[int, float, float]:
+            """Return (side, label_y, date_y) for a given item row.
+
+            ``side`` is -1 (above) or +1 (below).
+            """
+            if label_rows == 1:
+                label_y = y_mm - side_anchor - float(label_height_mm) - row * row_step
+                date_y = y_mm + float(date_offset_mm)
+                return -1, label_y, date_y
+            ring = row // 2
+            if row % 2 == 0:
+                side = -1
+                label_y = (
+                    y_mm
+                    - side_anchor
+                    - float(label_height_mm)
+                    - ring * row_step
+                )
+                date_y = y_mm - float(date_offset_mm) - DATE_HEIGHT_MM
+            else:
+                side = +1
+                label_y = y_mm + side_anchor + ring * row_step
+                date_y = y_mm + float(date_offset_mm)
+            return side, label_y, date_y
 
         for idx, it in enumerate(items):
             pos = positions[idx]
             tx = x_mm + pos * width_mm
             label_w = label_widths[idx]
             row = item_rows[idx]
-            label_y = _label_y_for_row(row)
+            side, label_y, date_y = _placement_for_row(row)
 
             if show_connectors:
-                # Connector reaches up to the bottom edge of the label
-                # frame for this item's row (so far-row markers get a
-                # taller hairline).
-                connectors_spec.append(
-                    (tx, y_mm - marker_radius_mm, tx, label_y + float(label_height_mm) - 0.5)
-                )
+                # Connector hugs the side of the marker pointing at the
+                # label, reaching just inside the label frame.
+                if side < 0:
+                    connectors_spec.append(
+                        (tx, y_mm - marker_radius_mm, tx, label_y + float(label_height_mm) - 0.5)
+                    )
+                else:
+                    connectors_spec.append(
+                        (tx, y_mm + marker_radius_mm, tx, label_y + 0.5)
+                    )
 
             markers_spec.append(
                 (
@@ -274,9 +338,8 @@ def register(mcp, ctx: ServerCtx) -> None:
             labels_spec.append((label_x, label_y, label_w, float(label_height_mm), str(it["label"])))
 
             if it.get("date"):
-                date_y = y_mm + date_offset_mm
                 date_x = max(x_mm, min(tx - label_w / 2, x_mm + width_mm - label_w))
-                dates_spec.append((date_x, date_y, label_w, 5.0, str(it["date"])))
+                dates_spec.append((date_x, date_y, label_w, DATE_HEIGHT_MM, str(it["date"])))
 
         # ---- One script body that creates everything --------------------
         body = f"""
@@ -345,19 +408,24 @@ _value = {{
 
         out = res.value or {}
 
-        # Bbox of everything drawn: labels above the axis (height
-        # label_offset + label_height), axis itself (negligible), dates
-        # below (date_offset + 5 mm date frame), plus a small visual
-        # breathing room at the bottom so callers chaining via
-        # PageCursor don't slam the next band (or a page footer) right
-        # against the date row.
-        bbox_top = (
-            axis_y
-            - float(label_offset_mm)
-            - float(label_height_mm)
-            - rows_extra
-        )
-        bbox_bottom = axis_y + date_offset_mm + 5.0 + float(bottom_margin_mm)
+        # Bbox of everything drawn. The "above" side covers the label
+        # stack reaching out to ring ``max_above_ring``; the "below"
+        # side covers either the legacy date row (label_rows=1) or the
+        # mirrored label stack (label_rows>=2). ``bottom_margin_mm`` is
+        # visual breathing room so callers chaining via PageCursor
+        # don't slam the next band into the timeline.
+        bbox_top = axis_y - above_extent
+        if label_rows == 1:
+            bbox_bottom = (
+                axis_y + float(date_offset_mm) + DATE_HEIGHT_MM + float(bottom_margin_mm)
+            )
+        else:
+            below_extent = (
+                side_anchor
+                + float(label_height_mm)
+                + max_below_ring * row_step
+            )
+            bbox_bottom = axis_y + below_extent + float(bottom_margin_mm)
         return {
             "ok": True,
             "axis": out.get("axis"),

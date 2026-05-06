@@ -149,11 +149,12 @@ def test_label_rows_two_alternates_y(monkeypatch):
     ys = _label_y_values(backend.last_body or "")
     assert len(ys) == 6
     # Two distinct y values, alternating: items 0, 2, 4 share row 0
-    # (closer to the axis = higher y); items 1, 3, 5 share row 1
-    # (further above = lower y).
+    # (above the axis); items 1, 3, 5 share row 1 (below the axis). In
+    # Scribus screen coords y grows downward, so the above row has the
+    # smaller numerical y.
     distinct = sorted(set(ys))
     assert len(distinct) == 2, f"expected 2 rows, got {distinct}"
-    row0_y, row1_y = distinct[1], distinct[0]  # row0 is closer to axis (higher y)
+    row0_y, row1_y = distinct[0], distinct[1]  # row0 above (smaller y), row1 below
     assert ys[0] == ys[2] == ys[4] == row0_y
     assert ys[1] == ys[3] == ys[5] == row1_y
 
@@ -204,16 +205,18 @@ def test_label_rows_two_doubles_horizontal_slot(monkeypatch):
     )
 
 
-def test_label_rows_two_grows_bbox_top(monkeypatch):
-    """Two-row labels stack higher above the axis, so the returned
-    bbox must be taller than a single-row equivalent."""
+def test_label_rows_two_extends_below_axis(monkeypatch):
+    """Two-row mode splits items above/below the axis. With dates the
+    label has to step further out to clear the date row, so the bbox is
+    materially taller than the single-row equivalent and dips well below
+    the axis line."""
     backend = _CapturingBackend()
     monkeypatch.setattr(
         "scribus_mcp.tools.patterns.timeline.get_backend",
         _patched_get_backend(backend),
     )
     tool = _build_timeline_tool()
-    items = [{"position": i / 5, "label": f"L{i}"} for i in range(6)]
+    items = [{"position": i / 5, "label": f"L{i}", "date": f"{2020 + i}"} for i in range(6)]
     one_row = asyncio.run(
         tool(items=items, x_mm=10, width_mm=180, top_y_mm=20, mode="auto")
     )
@@ -223,9 +226,12 @@ def test_label_rows_two_grows_bbox_top(monkeypatch):
             label_rows=2, mode="auto",
         )
     )
-    # Two-row stack is at least one full label-height taller.
+    # Two-row mode is meaningfully taller — at least one full label
+    # height (bumped side_anchor + below-side label stack).
     assert two_rows["bbox"]["height_mm"] > one_row["bbox"]["height_mm"]
     assert two_rows["bbox"]["height_mm"] - one_row["bbox"]["height_mm"] >= 5.0
+    # Top still anchored at top_y_mm.
+    assert abs(two_rows["bbox"]["y_mm"] - 20) < 0.5
 
 
 def test_label_rows_auto_short_labels_stay_single_row(monkeypatch):
