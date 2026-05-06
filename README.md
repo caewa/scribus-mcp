@@ -4,10 +4,13 @@ An MCP (Model Context Protocol) server that lets Claude drive [Scribus](https://
 
 ## TL;DR — wire it to Claude Code (Linux, fully auto)
 
-One command, both auto-downloads stacked: `uvx` fetches the MCP server from PyPI on demand, and `SCRIBUS_MCP_AUTO_APPIMAGE=1` makes the launcher pull the official Scribus 1.7.x AppImage to `~/Applications/` on the first interactive tool call. No system-wide install of either piece needed.
+One command, both auto-downloads stacked: `uvx` fetches the MCP server from PyPI on demand, and `SCRIBUS_MCP_AUTO_APPIMAGE=1` makes the launcher pull the official Scribus 1.7.x AppImage to `~/Applications/` on the first interactive tool call. `SCRIBUS_MCP_IGNORE_HOST_SCRIBUS=1` skips every host-binary lookup so the AppImage is used even when the distro ships an older Scribus 1.6. No system-wide install of either piece needed.
 
 ```bash
-claude mcp add scribus -s user -e SCRIBUS_MCP_AUTO_APPIMAGE=1 -- uvx scribus-mcp
+claude mcp add scribus -s user \
+  -e SCRIBUS_MCP_AUTO_APPIMAGE=1 \
+  -e SCRIBUS_MCP_IGNORE_HOST_SCRIBUS=1 \
+  -- uvx scribus-mcp
 ```
 
 One-time prerequisites on Debian/Ubuntu (the AppImage needs FUSE, the QR-code tool needs Ghostscript):

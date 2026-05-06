@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-05-06
+
+Two cooperating features in this minor: every multi-element pattern
+and layout now bundles its outputs into a Scribus group, and
+`create_timeline(label_rows>=2)` switches from "stack above" to
+"alternate above/below the axis" so manual document editing stays
+ergonomic.
+
+### Added
+
+- **Every pattern/layout returns a `"group"` field** naming a Scribus
+  group that owns axis, markers, connectors, labels, dates, cards,
+  cells, etc. — whatever the feature emits. Selecting the group in the
+  Scribus GUI moves, scales or deletes the whole feature as a single
+  unit instead of having to marquee-select each piece. Implemented via
+  the new shared helper
+  [src/scribus_mcp/tools/patterns/_grouping.py](src/scribus_mcp/tools/patterns/_grouping.py),
+  applied to 13 patterns (`timeline`, `bar_chart`, `pie_chart`,
+  `radar_chart`, `comparison_table`, `callout_box`, `code_sample`,
+  `axes_strip`, `pillar_strip`, `highlight_card_row`, `dark_kpi_band`,
+  `dot_label` × 2, `kpi_tile`, `qr_code_block`) and 11 layouts
+  (`kpi_row`, `card_grid`, `numbered_steps`, `equal_columns`,
+  `hero_band`, `image_caption`, `section_header`, `sidebar_layout`,
+  `table_of_contents`, `text_with_image`, `two_column_text`).
+- **TL;DR install snippet now sets `SCRIBUS_MCP_IGNORE_HOST_SCRIBUS=1`**
+  alongside `SCRIBUS_MCP_AUTO_APPIMAGE=1`, so distros shipping an
+  older Scribus 1.6 still get the 1.7.x AppImage path on first run
+  ([README.md](README.md)).
+
+### Changed
+
+- **`create_timeline(label_rows>=2)` now alternates above/below the
+  axis** instead of stacking extra rows above. Even rows (0, 2, …)
+  sit above the axis, odd rows (1, 3, …) below. Dates render close to
+  the axis on the same side as their item's label (between label and
+  axis); when any item carries a date, the label distance auto-bumps
+  to clear the date row. Bbox now extends both above and below the
+  axis. `label_rows=1` keeps the legacy single-row layout untouched
+  ([src/scribus_mcp/tools/patterns/timeline.py](src/scribus_mcp/tools/patterns/timeline.py)).
+- **`label_rows` accepts numeric strings** (`"2"`, `"3"`, …) in
+  addition to ints and `"auto"`, since the MCP boundary serialises
+  ints to strings.
+
+### Notes
+
+- 151 unit tests pass (was 144; +7 reflecting the new alternating
+  layout assertions and the no-overwrite-of-`last_body` mock contract
+  used by patterns/layouts that issue a trailing `groupObjects` call).
+
+[1.2.0]: https://github.com/caewa/scribus-mcp/releases/tag/v1.2.0
+
 ## [1.1.4] — 2026-05-05
 
 Two follow-ups to 1.1.3 driven by a fresh end-to-end test against the
