@@ -1,0 +1,146 @@
+diff --git a/scribus/plugins/scriptplugin/cmdmisc.cpp b/scribus/plugins/scriptplugin/cmdmisc.cpp
+index f057b2b33..320233ddc 100644
+--- a/scribus/plugins/scriptplugin/cmdmisc.cpp
++++ b/scribus/plugins/scriptplugin/cmdmisc.cpp
+@@ -10,7 +10,9 @@ for which a new license (GPL+exception) is in place.
+ #include <string>
+ 
+ #include <QBuffer>
++#include <QCoreApplication>
+ #include <QList>
++#include <QMetaObject>
+ #include <QPixmap>
+ 
+ #include "prefsmanager.h"
+@@ -799,6 +801,59 @@ PyObject *scribus_readpdfoptions(PyObject* /* self */, PyObject* args)
+ 	Py_RETURN_NONE;
+ }
+ 
++PyObject *scribus_invokelater(PyObject* /* self */, PyObject* args)
++{
++	Py_ssize_t n = PyTuple_GET_SIZE(args);
++	if (n < 1)
++	{
++		PyErr_SetString(PyExc_TypeError, "invokeLater() requires a callable");
++		return nullptr;
++	}
++	PyObject* callable = PyTuple_GET_ITEM(args, 0);
++	if (!PyCallable_Check(callable))
++	{
++		PyErr_SetString(PyExc_TypeError, "invokeLater() first argument must be callable");
++		return nullptr;
++	}
++	PyObject* callArgs = PyTuple_GetSlice(args, 1, n);
++	if (!callArgs)
++		return nullptr;
++	Py_INCREF(callable);
++
++	QObject* target = ScCore ? ScCore->primaryMainWindow() : nullptr;
++	if (!target)
++		target = QCoreApplication::instance();
++	if (!target)
++	{
++		Py_DECREF(callable);
++		Py_DECREF(callArgs);
++		PyErr_SetString(ScribusException, "invokeLater(): no Qt application available");
++		return nullptr;
++	}
++
++	QMetaObject::invokeMethod(target, [callable, callArgs]() {
++		PyGILState_STATE gs = PyGILState_Ensure();
++		PyObject* res = PyObject_Call(callable, callArgs, nullptr);
++		if (!res)
++			PyErr_Print();
++		else
++			Py_DECREF(res);
++		Py_DECREF(callable);
++		Py_DECREF(callArgs);
++		PyGILState_Release(gs);
++	}, Qt::QueuedConnection);
++
++	Py_RETURN_NONE;
++}
++
++PyObject *scribus_processevents(PyObject* /* self */)
++{
++	Py_BEGIN_ALLOW_THREADS
++	QCoreApplication::processEvents();
++	Py_END_ALLOW_THREADS
++	Py_RETURN_NONE;
++}
++
+ /*! HACK: this removes "warning: 'blah' defined but not used" compiler warnings
+ with header files structure untouched (docstrings are kept near declarations)
+ PV */
+@@ -818,10 +873,12 @@ void cmdmiscdocwarnings()
+ 	  << scribus_islayerlocked__doc__
+ 	  << scribus_islayeroutlined__doc__
+ 	  << scribus_islayerprintable__doc__
++	  << scribus_invokelater__doc__
+ 	  << scribus_islayervisible__doc__
+ 	  << scribus_loweractivelayer__doc__
+ 	  << scribus_moveselectiontoback__doc__ 
+ 	  << scribus_moveselectiontofront__doc__
++	  << scribus_processevents__doc__
+ 	  << scribus_raiseactivelayer__doc__
+ 	  << scribus_readpdfoptions__doc__
+ 	  << scribus_renderfont__doc__
+diff --git a/scribus/plugins/scriptplugin/cmdmisc.h b/scribus/plugins/scriptplugin/cmdmisc.h
+index 610dc2249..6e7394595 100644
+--- a/scribus/plugins/scriptplugin/cmdmisc.h
++++ b/scribus/plugins/scriptplugin/cmdmisc.h
+@@ -373,6 +373,34 @@ Save PDF options to fileName.\n\
+ "));
+ PyObject *scribus_savepdfoptions(PyObject* /* self */, PyObject* args);
+ 
++/*! docstring */
++PyDoc_STRVAR(scribus_invokelater__doc__,
++QT_TR_NOOP("invokeLater(callable, *args)\n\
++\n\
++Schedules callable(*args) to run on the Scribus GUI thread and returns\n\
++immediately. Use this from background threads (e.g. socket listeners) to\n\
++hand mutating Scripter calls back to the main thread; calling Scripter\n\
++APIs that touch the document or GUI from another thread is unsafe and\n\
++will typically crash.\n\
++\n\
++The callable is invoked asynchronously via a queued Qt event, so by the\n\
++time invokeLater() returns the call has not yet happened. Exceptions\n\
++raised inside the callable are printed to the Scribus script error\n\
++stream; they cannot be propagated back to the caller.\n\
++"));
++/*! Schedule a Python callable on the GUI thread (queued). */
++PyObject *scribus_invokelater(PyObject * /*self*/, PyObject* args);
++
++/*! docstring */
++PyDoc_STRVAR(scribus_processevents__doc__,
++QT_TR_NOOP("processEvents()\n\
++\n\
++Process pending Qt events. Call this periodically from a long-running\n\
++Python loop running on the GUI thread to keep the interface responsive.\n\
++"));
++/*! Pump the Qt event loop. */
++PyObject *scribus_processevents(PyObject * /*self*/);
++
+ PyDoc_STRVAR(scribus_readpdfoptions__doc__,
+ QT_TR_NOOP("readPDFOptions(fileName)\n\
+ \n\
+diff --git a/scribus/plugins/scriptplugin/scriptplugin.cpp b/scribus/plugins/scriptplugin/scriptplugin.cpp
+index 86e4bd6b9..5667ec169 100644
+--- a/scribus/plugins/scriptplugin/scriptplugin.cpp
++++ b/scribus/plugins/scriptplugin/scriptplugin.cpp
+@@ -457,6 +457,7 @@ PyMethodDef scribus_methods[] = {
+ 	{ "insertTableColumns", scribus_inserttablecolumns, METH_VARARGS, tr(scribus_inserttablecolumns__doc__)},
+ 	{ "insertTableRows", scribus_inserttablerows, METH_VARARGS, tr(scribus_inserttablerows__doc__)},
+ 	{ "insertText", scribus_inserttext, METH_VARARGS, tr(scribus_inserttext__doc__)},
++	{ "invokeLater", scribus_invokelater, METH_VARARGS, tr(scribus_invokelater__doc__)},
+ 	{ "isExportable", scribus_isexportable, METH_VARARGS, tr(scribus_isexportable__doc__)},
+ 	{ "isLayerFlow", scribus_islayerflow, METH_VARARGS, tr(scribus_islayerflow__doc__)},
+ 	{ "isLayerLocked", scribus_islayerlocked, METH_VARARGS, tr(scribus_islayerlocked__doc__)},
+@@ -497,6 +498,7 @@ PyMethodDef scribus_methods[] = {
+ 	{ "placeSVG", scribus_placevec, METH_VARARGS, tr(scribus_placesvg__doc__)},
+ 	{ "placeSXD", scribus_placevec, METH_VARARGS, tr(scribus_placesxd__doc__)},
+ 	{ "placeVectorFile", scribus_placevec, METH_VARARGS, tr(scribus_placevec__doc__)},
++	{ "processEvents", (PyCFunction) scribus_processevents, METH_NOARGS, tr(scribus_processevents__doc__)},
+ 	{ "progressReset", (PyCFunction) scribus_progressreset, METH_NOARGS, tr(scribus_progressreset__doc__)},
+ 	{ "progressSet", scribus_progresssetprogress, METH_VARARGS, tr(scribus_progresssetprogress__doc__)},
+ 	{ "progressTotal", scribus_progresssettotalsteps, METH_VARARGS, tr(scribus_progresssettotalsteps__doc__)},

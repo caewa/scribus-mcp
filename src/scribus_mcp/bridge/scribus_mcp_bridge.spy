@@ -141,23 +141,38 @@ if _existing is not None:
 
 
 # ---------------------------------------------------------------------------
-# Step 4: probe Qt binding availability
+# Step 4a: prefer the native Scripter primitives when the patched Scribus
+# build exposes them — no PyQt bundling required.
+# ---------------------------------------------------------------------------
+
+_has_native = (
+    hasattr(scribus, "invokeLater")
+    and hasattr(scribus, "processEvents")
+)
+if _has_native:
+    _log("native scribus.invokeLater / processEvents available — "
+         "skipping Qt binding probe")
+
+
+# ---------------------------------------------------------------------------
+# Step 4b: probe Qt binding availability (legacy fallback)
 # ---------------------------------------------------------------------------
 
 _QTimer = None
 _qt_binding = None
-for _mod in ("PyQt6.QtCore", "PyQt5.QtCore", "PySide6.QtCore", "PySide2.QtCore"):
-    try:
-        _qt = __import__(_mod, fromlist=["QTimer"])
-        _QTimer = _qt.QTimer
-        _qt_binding = _mod.split(".")[0]
-        _log("found Qt binding: %s" % _qt_binding)
-        break
-    except ImportError:
-        continue
+if not _has_native:
+    for _mod in ("PyQt6.QtCore", "PyQt5.QtCore", "PySide6.QtCore", "PySide2.QtCore"):
+        try:
+            _qt = __import__(_mod, fromlist=["QTimer"])
+            _QTimer = _qt.QTimer
+            _qt_binding = _mod.split(".")[0]
+            _log("found Qt binding: %s" % _qt_binding)
+            break
+        except ImportError:
+            continue
 
-if _QTimer is None:
-    _log("no Qt binding (PyQt5/6 or PySide2/6) — falling back to thread polling")
+    if _QTimer is None:
+        _log("no Qt binding (PyQt5/6 or PySide2/6) — falling back to thread polling")
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +261,14 @@ def _listener(server_sock):
                 _send_back(conn, {"ok": False, "error": "auth failed"})
                 continue
             _inbox.put((conn, msg))
+            if _has_native:
+                # Edge-triggered: post a queued event so the GUI thread
+                # drains the inbox once per message instead of polling at
+                # 20 ms via QTimer.
+                try:
+                    scribus.invokeLater(_drain_inbox)
+                except Exception:
+                    pass
         except Exception:
             try:
                 conn.close()
@@ -377,13 +400,18 @@ def _start():
         listener_thread.start()
 
         timer = None
-        if _QTimer is not None:
+        if _has_native:
+            # Native path: listener wakes the GUI thread per message via
+            # scribus.invokeLater(_drain_inbox) — no timer or PyQt needed.
+            pass
+        elif _QTimer is not None:
             timer = _QTimer()
             timer.timeout.connect(_drain_inbox)
             timer.start(20)
-        # No-Qt path: main-thread dispatch happens in _block_main_thread_dispatch()
-        # below, after _start() returns. We don't use a worker thread for
-        # Scripter calls because Scripter is not thread-safe.
+        # No-Qt, no-native path: main-thread dispatch happens in
+        # _block_main_thread_dispatch() below, after _start() returns. We
+        # don't use a worker thread for Scripter calls because Scripter is
+        # not thread-safe.
 
         setattr(scribus, _STATE_KEY, {
             "port": port,
@@ -395,9 +423,15 @@ def _start():
             "discovery_path": discovery_path,
         })
 
+        if _has_native:
+            _dispatch_mode = "native-invokeLater"
+        elif _qt_binding:
+            _dispatch_mode = "qt-" + _qt_binding
+        else:
+            _dispatch_mode = "main-thread-blocking"
         _log(
-            "listening on 127.0.0.1:%d qt=%s discovery=%s"
-            % (port, _qt_binding or "NONE-thread-fallback", discovery_path)
+            "listening on 127.0.0.1:%d dispatch=%s discovery=%s"
+            % (port, _dispatch_mode, discovery_path)
         )
     except Exception as exc:
         _fatal("startup failed: %s\n%s" % (exc, traceback.format_exc()))
@@ -423,14 +457,15 @@ def _block_main_thread_dispatch():
     state = getattr(scribus, _STATE_KEY, {})
     state["alive"] = True
     setattr(scribus, _STATE_KEY, state)
-    # ``scribus.progressReset()`` calls ``QApplication::processEvents()``
-    # in C++, so every idle tick we pump Qt's queue and keep the GUI
-    # alive (otherwise the main window paints black until a message
-    # arrives and the dispatcher yields). The progress bar is invisible
-    # in normal operation, so resetting it ~10x/sec is a no-op for the
-    # user. Falls back to a no-op if a future Scribus build drops the
-    # function or it raises.
-    _pump = getattr(scribus, "progressReset", None)
+    # Pump Qt's event queue every idle tick to keep the GUI alive
+    # (otherwise the main window paints black until a message arrives
+    # and the dispatcher yields). Patched 1.7.x exposes
+    # ``scribus.processEvents()`` directly; older builds fall back to
+    # ``scribus.progressReset()`` which calls ``QApplication::processEvents()``
+    # internally. The progress bar is invisible in normal operation, so
+    # resetting it ~10x/sec is a no-op for the user. Falls back to a
+    # no-op if neither is available.
+    _pump = getattr(scribus, "processEvents", None) or getattr(scribus, "progressReset", None)
     while state.get("alive", True):
         try:
             conn, msg = _inbox.get(timeout=0.1)
@@ -457,5 +492,23 @@ def _block_main_thread_dispatch():
 
 _start()
 
-if _QTimer is None:
+# Dispatch strategy at exit of the script:
+#
+#  - PyQt path: Qt's main loop runs; QTimer fires the drain. PyQt manages
+#    GIL transitions internally, so we can return and let exec() take over.
+#
+#  - Native (and no-PyQt-no-native) paths: BLOCK the script, drive the
+#    dispatch loop ourselves.
+#
+#    Why we can't simply return when native is available: scribus runs this
+#    .spy via PyRun_String synchronously on the main thread, and never
+#    releases the GIL afterwards — Qt::exec() is then C++ but the GIL
+#    stays owned by the main thread forever. The listener thread can
+#    accept() (which releases GIL during the syscall) but blocks
+#    indefinitely trying to reacquire the GIL afterwards. With no Python
+#    thread releasing the GIL, scribus.invokeLater() never reaches the
+#    main thread either. _block_main_thread_dispatch fixes this: its
+#    _inbox.get(timeout=…) and time.sleep release the GIL so the
+#    listener can run, while scribus.processEvents() pumps Qt's UI.
+if _has_native or _QTimer is None:
     _block_main_thread_dispatch()
