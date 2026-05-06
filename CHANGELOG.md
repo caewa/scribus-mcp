@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] — 2026-05-06
+
+Timeline polish for alternating mode (`label_rows>=2`) and a quality-of-life
+fix for `open_document` in interactive sessions.
+
+### Changed
+
+- **Connectors stop at the date frame** in
+  [timeline.py](src/scribus_mcp/tools/patterns/timeline.py) when the
+  item carries a date and `label_rows>=2`. Previously the vertical
+  line ran from marker straight through the date text into the label,
+  cutting through digits like `2023` → `20|23`. The date itself
+  visually anchors the label, so a single short connector from
+  marker to date frame is enough.
+- **Per-item label/date alignment** in alternating mode:
+  - Top-side label text bottom-aligns within its frame so it sits
+    next to the date below (previously top-aligned text left visible
+    whitespace between label and date when `label_height_mm` was
+    large enough to allow wrapping).
+  - Bottom-side date text bottom-aligns so it sits next to the
+    bottom label.
+  - First date left-aligns to its marker, last date right-aligns to
+    its marker; mid dates stay centered. Edge dates no longer float
+    away from their tick because of the centered-text + clamped-
+    frame combination.
+
+### Fixed
+
+- **`open_document` no longer pops "Ce document est déjà ouvert"** in
+  interactive sessions. The handler now checks `haveDoc()` +
+  `getDocName()` and skips `openDoc()` when the requested path is
+  already the active document, so repeated open calls in a session
+  don't require manual modal dismissal.
+
 ## [1.3.0] — 2026-05-06
 
 Bridge gains a third dispatch path that drops the bundled-PyQt6
