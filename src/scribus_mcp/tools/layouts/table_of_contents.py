@@ -131,7 +131,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             cur_y += line_height_mm
 
         group_name = await group_created_objects(
-            backend, [title_name] + list(entry_names or [])
+            backend, [title_name, *(entry_names or [])]
         )
         return {
             "ok": True,

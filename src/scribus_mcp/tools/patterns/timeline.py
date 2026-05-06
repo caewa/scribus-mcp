@@ -206,10 +206,7 @@ def register(mcp, ctx: ServerCtx) -> None:
             + float(label_height_mm)
             + max_above_ring * row_step
         )
-        if top_y_mm is not None:
-            axis_y = float(top_y_mm) + above_extent
-        else:
-            axis_y = float(axis_y_mm)
+        axis_y = float(top_y_mm) + above_extent if top_y_mm is not None else float(axis_y_mm)
         # Internal alias used below — was named y_mm before the rename.
         y_mm = axis_y
 
@@ -410,11 +407,13 @@ _value = {{
         out = res.value or {}
         group_name = await group_created_objects(
             backend,
-            [out.get("axis")]
-            + list(out.get("connectors", []))
-            + list(out.get("markers", []))
-            + list(out.get("labels", []))
-            + list(out.get("dates", [])),
+            [
+                out.get("axis"),
+                *out.get("connectors", []),
+                *out.get("markers", []),
+                *out.get("labels", []),
+                *out.get("dates", []),
+            ],
         )
 
         # Bbox of everything drawn. The "above" side covers the label
