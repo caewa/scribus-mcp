@@ -393,12 +393,20 @@ for _x, _y, _w, _h, _text in {dates_spec!r}:
     _s.setTextAlignment(1, _n)
     _date_names.append(_n)
 
+_members = [_axis] + _connector_names + _marker_names + _label_names + _date_names
+_before = set(_it[0] for _it in (_s.getPageItems() or []))
+_s.groupObjects(_members)
+_after = set(_it[0] for _it in (_s.getPageItems() or []))
+_new = sorted(_after - _before - set(_members))
+_group = _new[-1] if _new else None
+
 _value = {{
     "axis": _axis,
     "markers": _marker_names,
     "connectors": _connector_names,
     "labels": _label_names,
     "dates": _date_names,
+    "group": _group,
 }}
 """
 
@@ -433,6 +441,7 @@ _value = {{
             "connectors": out.get("connectors", []),
             "labels": out.get("labels", []),
             "dates": out.get("dates", []),
+            "group": out.get("group"),
             # Surface the resolved row count so callers passing
             # ``label_rows="auto"`` can see whether single-row fit or
             # the timeline was bumped to two-row staggered.
